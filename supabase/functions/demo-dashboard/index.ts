@@ -708,7 +708,7 @@ async function loadRuns() {
       var isExp = expandedRun === run.id;
       var rowCls = 'run-row' + (isExp ? ' expanded' : '');
 
-      html += '<tr class="' + rowCls + '" onclick="toggleRun(\'' + run.id + '\')">' +
+      html += '<tr class="' + rowCls + '" onclick="toggleRun(\\'' + run.id + '\\')">' +
         '<td>' + fmtId(run.id) + '</td>' +
         '<td>' + statusBadge(run.status) + '</td>' +
         '<td><span class="mono text-muted">' + scenario + '</span></td>' +
@@ -764,7 +764,7 @@ function buildTimeline(run) {
       errorHtml = '<div class="step-error-inline">' + esc(step.error) + '</div>';
     }
 
-    cards += '<div class="' + cardCls + '" onclick="toggleStep(event, \'' + esc(run.id) + '\', \'' + esc(step.step_name) + '\')">' +
+    cards += '<div class="' + cardCls + '" onclick="toggleStep(event, \\'' + esc(run.id) + '\\', \\'' + esc(step.step_name) + '\\')">' +
       '<div class="step-name">' + esc(stepLabel(step.step_name)) + '</div>' +
       '<div class="step-meta">' + statusBadge(step.status) +
         (durationStr ? '<span class="step-duration">' + durationStr + '</span>' : '') +
@@ -935,7 +935,7 @@ async function triggerDuplicate(email) {
       fetch(BASE + '/api/trigger', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
     ]);
     var bodies = await Promise.all(results.map(function(r) { return r.json(); }));
-    box.textContent = 'Request 1: ' + JSON.stringify(bodies[0]) + '\nRequest 2: ' + JSON.stringify(bodies[1]);
+    box.textContent = 'Request 1: ' + JSON.stringify(bodies[0]) + '\\nRequest 2: ' + JSON.stringify(bodies[1]);
     setTimeout(refreshAll, 600);
   } catch (e) {
     box.textContent = 'Error: ' + e.message;
