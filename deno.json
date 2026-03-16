@@ -1,0 +1,9 @@
+{
+  "tasks": {
+    "webhook": "PORT=8000 deno run --allow-net --allow-env --env=.env.local supabase/functions/klaviyo-unsubscribe/index.ts",
+    "dashboard": "PORT=8001 deno run --allow-net --allow-env --env=.env.local supabase/functions/demo-dashboard/index.ts"
+  },
+  "imports": {
+    "https://esm.sh/@supabase/supabase-js@2": "https://esm.sh/@supabase/supabase-js@2"
+  }
+}
