@@ -2,7 +2,7 @@
   "name": "supaflow",
   "description": "Leichtgewichtiges Open-Source Observability-Tool fuer Supabase Edge Functions. Monitoring, Error Logs und Flow-Visualisierung.",
   "stack": {
-    "framework": "Vite (React)",
+    "framework": "Next.js 15 (App Router)",
     "language": "TypeScript",
     "styling": "Tailwind CSS",
     "database": "Supabase (PostgreSQL)",

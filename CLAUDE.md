@@ -19,11 +19,13 @@
 - **Sprache:** Commit Messages auf Englisch
 
 ### Code
-- **Sprache:** TypeScript (ueberall — SDK, Dashboard, Examples)
-- **Monorepo:** pnpm workspaces + turborepo
-- **Imports:** relativer Import innerhalb eines Packages, Package-Import (`@supaflow/sdk`) zwischen Packages
-- **SDK:** Minimale API-Oberflaeche — `createSupaflowClient`, `run.start()`, `run.step()`, `run.end()`, `run.error()`
-- **Styling:** Tailwind CSS (kein CSS-in-JS)
+- **Sprache:** TypeScript (ueberall — Dashboard, SDK, Examples)
+- **Monorepo:** pnpm workspaces
+- **Dashboard:** Next.js 15 App Router — Server Components fuer Layouts, Client Components fuer interaktive Views
+- **API Routes:** alle unter `packages/dashboard/src/app/api/` — immer `export const dynamic = 'force-dynamic'`
+- **Auth:** Supabase Auth ueber Server-Client — Middleware schützt alle Routes ausser `/auth`
+- **Admin-Queries:** `getAdminClient()` aus `@/lib/supabase/admin` — nur in Route Handlers aufrufen, nicht auf Module-Level
+- **Styling:** Tailwind CSS, Dark Theme — Hintergrund `#0f0f0f`, Cards `#111`
 
 ### Dateien
 - Keine Dateien löschen ohne explizite Anweisung

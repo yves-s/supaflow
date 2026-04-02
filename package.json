@@ -1,0 +1,13 @@
+{
+  "name": "supaflow",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter dashboard dev",
+    "build": "pnpm --filter dashboard build",
+    "lint": "pnpm --filter dashboard lint"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0"
+  }
+}
