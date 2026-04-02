@@ -1,0 +1,34 @@
+{
+  "name": "supaflow",
+  "description": "Leichtgewichtiges Open-Source Observability-Tool fuer Supabase Edge Functions. Monitoring, Error Logs und Flow-Visualisierung.",
+  "stack": {
+    "framework": "Vite (React)",
+    "language": "TypeScript",
+    "styling": "Tailwind CSS",
+    "database": "Supabase (PostgreSQL)",
+    "orm": null,
+    "testing": "",
+    "package_manager": "pnpm"
+  },
+  "build": {
+    "web": "pnpm run build",
+    "dev": "pnpm run dev",
+    "test": ""
+  },
+  "paths": {
+    "components": "packages/dashboard/src/components",
+    "pages": "packages/dashboard/src/views",
+    "lib": "packages/dashboard/src/lib",
+    "api": null
+  },
+  "monorepo": {
+    "sdk": "packages/sdk",
+    "schema": "packages/schema",
+    "dashboard": "packages/dashboard",
+    "examples": "examples/klaviyo-sync"
+  },
+  "pipeline": {
+    "workspace_id": "",
+    "project_id": ""
+  }
+}
