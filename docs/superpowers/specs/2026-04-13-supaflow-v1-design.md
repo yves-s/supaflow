@@ -43,7 +43,7 @@ export default supaflow.serve("order-fulfillment", async (flow) => {
 
 Single entry point. Handles:
 - `Deno.serve()` with request parsing
-- Idempotency check (from header or body hash)
+- Idempotency check (`Idempotency-Key` header, falls back to SHA-256 of request body)
 - Run creation in DB
 - HTTP response with run ID
 
@@ -261,7 +261,7 @@ The graph is built from run data, not from a static schema:
 1. Query `step_states` for a run, ordered by `order`
 2. Steps execute sequentially → each step connects to the next
 3. Steps with shared name prefix (e.g. `reserve-SKU001`, `reserve-SKU002`) are detected as fan-out from their common predecessor
-4. Layout is computed by React Flow's auto-layout (dagre or elk)
+4. Layout is computed by dagre (lightweight, standard React Flow layout lib)
 
 A workflow that has never run shows an empty state. The first test run populates the graph.
 
@@ -314,4 +314,4 @@ project/
 }
 ```
 
-The runtime reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from environment variables (standard Supabase Edge Function env). The dashboard reads from `supaflow.json` or env vars.
+The runtime reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from environment variables (standard Supabase Edge Function env). The dashboard reads from `supaflow.json`; environment variables (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) override file values when set.
