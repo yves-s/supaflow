@@ -8,6 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 ### Changed
 - Restructured from standalone project to Claude Code Plugin
 - Runtime, schema, and dashboard moved to `assets/` (copied to projects on init)
+- `/supaflow:init` redesigned: 3-phase flow (detect → install → done), zero manual commands, precondition checks with plain-language messages, auto-detect credentials, schema auto-recovery, separated instrumentation into `/supaflow:scan`
 
 ### Added
 - Plugin manifest (`.claude-plugin/plugin.json`)

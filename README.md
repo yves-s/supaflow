@@ -45,12 +45,13 @@ Then run the init command:
 /supaflow:init
 ```
 
-This will:
-1. Copy the runtime to `supabase/functions/_shared/supaflow.ts`
-2. Create a database migration with the workflow schema
-3. Apply the schema (`supabase db push`)
-4. Install the dashboard app
-5. Scan and instrument all existing Edge Functions
+This sets up everything automatically: runtime, database schema, dashboard, and config. It detects your Supabase credentials from `.env` and handles schema migration. No manual steps required.
+
+After init, instrument your Edge Functions:
+
+```
+/supaflow:scan
+```
 
 ## Usage
 
