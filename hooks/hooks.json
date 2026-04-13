@@ -1,0 +1,12 @@
+{
+  "hooks": [
+    {
+      "event": "PostToolUse",
+      "match": {
+        "tool": ["Edit", "Write"],
+        "path": "supabase/functions/**/*.ts"
+      },
+      "instructions": "A file in supabase/functions/ was just edited. Check if Supaflow is installed in this project (does supabase/functions/_shared/supaflow.ts exist?). If yes, quickly review the changed file: are all external calls (fetch, SDK calls, API requests) wrapped in flow.step()? Are multi-step processes tracked? If anything is missing, load the supaflow skill and instrument the gaps. Only instrument the changed file, not the entire project. If the file is in _shared/ or tests/, skip instrumentation."
+    }
+  ]
+}

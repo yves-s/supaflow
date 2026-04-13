@@ -1,0 +1,11 @@
+{
+  "name": "supaflow",
+  "version": "0.1.0",
+  "description": "Automatic workflow instrumentation for Supabase Edge Functions. Adds retries, error handling, logging, idempotency, and dead letter queues — Claude does the work, you write normal TypeScript.",
+  "author": {
+    "name": "Yves Schleich"
+  },
+  "repository": "https://github.com/yves-s/edge-flow",
+  "license": "MIT",
+  "keywords": ["supabase", "workflows", "observability", "edge-functions", "retries", "error-handling"]
+}

@@ -1,5 +1,7 @@
-dashboard/node_modules/
-dashboard/dist/
+assets/dashboard/node_modules/
+assets/dashboard/dist/
 .superpowers/
-.env
+.claude/
+.pipeline/
 .env.local
+deno.lock

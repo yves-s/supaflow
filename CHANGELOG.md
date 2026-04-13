@@ -5,13 +5,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ## [Unreleased]
 
+### Changed
+- Restructured from standalone project to Claude Code Plugin
+- Runtime, schema, and dashboard moved to `assets/` (copied to projects on init)
+
 ### Added
-- Supaflow runtime library (`supaflow.serve()`, `flow.step()`, `flow.input()`) with retries, idempotency, DLQ, and timeout
-- React Flow observability dashboard (Vite + React) with sidebar, metrics bar, flow graph, and detail panel
-- Database schema with `duration_ms` and `order` columns for step tracking
-- Example workflow (order-fulfillment) demonstrating the full API
-- Unit tests for runtime internals (10 tests)
-- `supaflow.json` configuration file for dashboard credentials
+- Plugin manifest (`.claude-plugin/plugin.json`)
+- Supaflow Skill (`skills/supaflow/SKILL.md`) — teaches Claude to instrument workflows
+- `/supaflow:init` command — project setup + full scan
+- `/supaflow:scan` command — on-demand re-scan
+- Continuous hook — auto-instruments on file edits
+- GitHub marketplace config (`marketplace.json`)
 
 ### Removed
-- Demo code: klaviyo-unsubscribe workflow, demo-dashboard, mock API layer, edgeflow.ts
+- Example workflow (replaced by init scan of real code)
+- Project-level deno.json, project.json, supaflow.json (now created per-project by init)

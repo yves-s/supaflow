@@ -1,152 +1,53 @@
-# Supaflow — Setup Guide
+# Supaflow
 
-Supaflow is a TypeScript workflow runtime with built-in retries, idempotency, dead letter queues, and a React Flow observability dashboard. All state lives in Postgres.
+A Claude Code Plugin that makes Claude build robust workflows automatically.
 
----
+## Install
 
-## Quick Start
+Add the marketplace and install:
 
-### 1. Apply the schema
-
-```bash
-supabase db push
+```
+/plugin marketplace add yves-s/edge-flow
+/plugin install supaflow
 ```
 
-### 2. Write a workflow
+Or load locally for development:
 
-```typescript
-import { supaflow } from "./_shared/supaflow.ts";
-
-export default supaflow.serve("my-workflow", async (flow) => {
-  const { email } = flow.input<{ email: string }>();
-
-  const user = await flow.step("lookup-user", () => findUser(email));
-  await flow.step("send-welcome", () => sendEmail(user.id));
-});
+```
+claude --plugin-dir /path/to/supaflow
 ```
 
-### 3. Run it
+## Use
 
-```bash
-deno task example
+In any Supabase project:
+
+```
+/supaflow:init
 ```
 
-```bash
-curl -X POST http://localhost:8000 \
-  -H "Content-Type: application/json" \
-  -d '{"orderId": "ORD-001", "email": "test@example.com", "items": [{"sku": "A", "quantity": 1, "price": 10}]}'
-```
+That's it. Claude scans your Edge Functions, adds retries, error handling, logging, idempotency, and dead letter queues. A React Flow dashboard shows your workflow runs.
 
-### 4. Open the dashboard
+After init, Claude instruments automatically whenever you write or change Edge Functions.
 
-```bash
-cd dashboard && npm install && npm run dev
-```
+## Commands
 
-Open [http://localhost:3001](http://localhost:3001)
-
----
-
-## API Reference
-
-### `supaflow.serve(name, handler)`
-
-Wraps `Deno.serve()`. Handles JSON parsing, idempotency (`Idempotency-Key` header or SHA-256 of body), run creation, and error responses.
-
-```typescript
-export default supaflow.serve("workflow-name", async (flow) => {
-  // workflow logic
-});
-```
-
-### `flow.input<T>()`
-
-Returns the parsed request body with TypeScript generics for type safety.
-
-### `flow.step(name, fn, options?)`
-
-Executes a workflow step with retries, structured logging, and DLQ on failure.
-
-- On success: returns the step function's return value
-- On failure (after all retries): throws, writes to DLQ, marks run as failed
-- Partial failure: wrap in try/catch to continue the run
-
-**Options:**
-
-| Option | Default | Description |
-|---|---|---|
-| `maxAttempts` | 3 | Number of retry attempts |
-| `backoff` | [1000, 2000, 4000] | Delay (ms) between retries |
-| `timeout` | 30000 | Step timeout in ms |
-
----
-
-## Schema
-
-Four Postgres tables:
-
-| Table | Purpose |
+| Command | What it does |
 |---|---|
-| `idempotency_keys` | Deduplicates webhook retries |
-| `workflow_runs` | One record per trigger (status, duration, error) |
-| `step_states` | Every step with input, output, retries, duration, order |
-| `dead_letter_queue` | Failed steps for manual intervention |
+| `/supaflow:init` | Set up Supaflow in your project (once per project) |
+| `/supaflow:scan` | Re-scan all Edge Functions, instrument gaps |
 
----
+## What Gets Added to Your Project
 
-## Dashboard
+| File | Purpose |
+|---|---|
+| `supabase/functions/_shared/supaflow.ts` | Runtime library (retries, DLQ, logging) |
+| `supabase/migrations/*_supaflow.sql` | Database schema (4 tables) |
+| `supaflow.json` | Config (Supabase credentials) |
+| `dashboard/` | React Flow observability UI |
 
-React Flow observability UI. Connects to Supabase directly via anon key.
+## How It Works
 
-**Features:**
-- Workflow list with run counts and success rates
-- Run history with status, duration, time
-- Interactive flow graph (zoom, pan, minimap)
-- Step detail panel (input, output, error, retries, DLQ status)
-- Metrics bar (total runs, success rate, avg duration, DLQ count, running)
-
----
-
-## Configuration
-
-`supaflow.json` in project root:
-
-```json
-{
-  "supabase_url": "https://xxx.supabase.co",
-  "supabase_anon_key": "eyJ...",
-  "dashboard_port": 3001
-}
-```
-
-Runtime reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from environment variables.
-Dashboard reads from `supaflow.json`; env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) override.
-
----
-
-## Tests
-
-```bash
-deno task test
-```
-
----
-
-## Architecture
-
-```
-Webhook Request
-  └── supaflow.serve("workflow-name", handler)
-        ├── Idempotency check      → idempotency_keys
-        ├── Create run              → workflow_runs
-        ├── flow.step("step-1")     → step_states (retry × N)
-        ├── flow.step("step-2")     → step_states (retry × N)
-        │     └── on final failure  → dead_letter_queue
-        └── Complete run            → workflow_runs
-
-Dashboard (Vite + React Flow)
-  └── Supabase JS client (anon key, read-only)
-        ├── workflow_runs   → sidebar, metrics
-        ├── step_states     → flow graph
-        └── dead_letter_queue → DLQ panel
-```
+1. **Init:** Claude copies the runtime into your project, creates the database schema, and scans all your Edge Functions
+2. **Instrumentation:** Claude wraps external calls in `flow.step()` with retries, error handling, and logging
+3. **Continuous:** Every time you edit an Edge Function, Claude checks if new code needs instrumentation
+4. **Dashboard:** Open `cd dashboard && npm run dev` to see your workflow runs, step timelines, and errors

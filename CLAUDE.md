@@ -7,7 +7,7 @@
 
 ## Projekt
 
-**Supaflow** – TypeScript workflow runtime with retries, idempotency, DLQ, and React Flow observability dashboard. Built on Supabase Edge Functions.
+**Supaflow** – Claude Code Plugin for automatic workflow instrumentation on Supabase Edge Functions.
 
 ---
 
@@ -19,10 +19,10 @@
 - **Sprache:** Commit Messages auf Englisch
 
 ### Code
-- **Runtime:** Deno + TypeScript (supabase/functions/)
-- **Dashboard:** React 18 + Vite + @xyflow/react + dagre (dashboard/)
+- **Plugin:** Claude Code Plugin (skills, commands, hooks)
+- **Runtime:** Deno + TypeScript (assets/supaflow.ts)
+- **Dashboard:** React 18 + Vite + @xyflow/react + dagre (assets/dashboard/)
 - **Database:** Supabase Postgres with RLS
-- **Config:** supaflow.json (project root)
 
 ### Dateien
 - Keine Dateien löschen ohne explizite Anweisung
@@ -68,15 +68,19 @@ curl -s -X PATCH -H "X-Pipeline-Key: {pipeline.api_key}" \
 ## Architektur
 
 ```
-supabase/functions/_shared/supaflow.ts  — Runtime (serve, step, idempotency, retries, DLQ)
-supabase/functions/example-workflow/    — Example workflow using the API
-supabase/functions/tests/               — Deno tests
-supabase/migrations/                    — Postgres schema (4 tables)
-dashboard/                              — React Flow observability UI (Vite)
-supaflow.json                           — Config (Supabase URL, anon key, port)
+.claude-plugin/plugin.json         — Plugin manifest
+skills/supaflow/SKILL.md           — Instrumentation skill (principles, API, decisions)
+commands/supaflow-init.md          — /supaflow:init command
+commands/supaflow-scan.md          — /supaflow:scan command
+hooks/hooks.json                   — Continuous PostToolUse hook
+assets/supaflow.ts                 — Runtime (copied to projects on init)
+assets/supaflow_schema.sql         — Schema (copied to projects on init)
+assets/dashboard/                  — Dashboard app (copied to projects on init)
+assets/tests/                      — Runtime tests
+marketplace.json                   — GitHub marketplace config
 ```
 
-**Commands:** `deno task example` (run workflow), `deno task test` (tests), `cd dashboard && npm run dev` (dashboard)
+**Commands:** `claude --plugin-dir .` (development), `/plugin validate` (check manifest)
 
 ---
 
