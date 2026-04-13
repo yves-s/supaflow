@@ -14,6 +14,7 @@ import {
   fetchMetrics,
   fetchDlqEntries,
   fetchFailedRuns,
+  fetchFailedRunCount,
   fetchAllSteps,
   type WorkflowSummary,
   type Run,
@@ -51,6 +52,7 @@ export default function App() {
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [dlqEntries, setDlqEntries] = useState<DlqEntry[]>([]);
   const [failedRuns, setFailedRuns] = useState<Run[]>([]);
+  const [failedRunCount, setFailedRunCount] = useState(0);
   const [allSteps, setAllSteps] = useState<StepWithWorkflow[]>([]);
 
   // Loading state
@@ -88,8 +90,14 @@ export default function App() {
       .finally(() => setLoadingRuns(false));
 
     setLoadingMetrics(true);
-    fetchMetrics(selectedWorkflow ?? undefined)
-      .then(setMetrics)
+    Promise.all([
+      fetchMetrics(selectedWorkflow ?? undefined),
+      fetchFailedRunCount(selectedWorkflow ?? undefined),
+    ])
+      .then(([m, count]) => {
+        setMetrics(m);
+        setFailedRunCount(count);
+      })
       .catch(console.error)
       .finally(() => setLoadingMetrics(false));
   }, [selectedWorkflow]);
@@ -239,7 +247,7 @@ export default function App() {
     : null;
 
   // Error count for tab badge
-  const errorCount = (metrics?.dlqCount ?? 0) + failedRuns.length;
+  const errorCount = (metrics?.dlqCount ?? 0) + failedRunCount;
 
   // steps is used in the effects above; suppress unused var by referencing it
   void steps;

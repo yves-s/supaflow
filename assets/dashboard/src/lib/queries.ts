@@ -110,14 +110,18 @@ export async function fetchSteps(runId: string): Promise<Step[]> {
   return (data ?? []) as Step[];
 }
 
-export async function fetchMetrics(): Promise<Metrics> {
-  const [runsResult, dlqResult] = await Promise.all([
-    supabase.from("workflow_runs").select("status, duration_ms"),
-    supabase
-      .from("workflow_dlq")
-      .select("id")
-      .is("resolved_at", null),
-  ]);
+export async function fetchMetrics(workflowName?: string): Promise<Metrics> {
+  let runsQuery = supabase.from("workflow_runs").select("status, duration_ms");
+  if (workflowName) {
+    runsQuery = runsQuery.eq("workflow_name", workflowName);
+  }
+
+  let dlqQuery = supabase.from("workflow_dlq").select("id").is("resolved_at", null);
+  if (workflowName) {
+    dlqQuery = dlqQuery.eq("workflow_name", workflowName);
+  }
+
+  const [runsResult, dlqResult] = await Promise.all([runsQuery, dlqQuery]);
 
   const runs = runsResult.data ?? [];
   const totalRuns = runs.length;
@@ -139,18 +143,85 @@ export async function fetchMetrics(): Promise<Metrics> {
   return { totalRuns, successRate, avgDurationMs, dlqCount, runningCount };
 }
 
-export async function fetchDlqEntries(runId?: string): Promise<DlqEntry[]> {
+export async function fetchDlqEntries(opts?: { runId?: string; workflowName?: string }): Promise<DlqEntry[]> {
   let query = supabase
     .from("workflow_dlq")
     .select("*")
     .is("resolved_at", null)
     .order("created_at", { ascending: false });
 
-  if (runId) {
-    query = query.eq("run_id", runId);
+  if (opts?.runId) {
+    query = query.eq("run_id", opts.runId);
+  }
+  if (opts?.workflowName) {
+    query = query.eq("workflow_name", opts.workflowName);
   }
 
   const { data, error } = await query;
   if (error) throw error;
   return (data ?? []) as DlqEntry[];
+}
+
+export async function fetchFailedRunCount(workflowName?: string): Promise<number> {
+  let query = supabase
+    .from("workflow_runs")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "failed");
+  if (workflowName) {
+    query = query.eq("workflow_name", workflowName);
+  }
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function fetchFailedRuns(workflowName?: string): Promise<Run[]> {
+  let query = supabase
+    .from("workflow_runs")
+    .select("*")
+    .eq("status", "failed")
+    .order("started_at", { ascending: false })
+    .limit(50);
+  if (workflowName) {
+    query = query.eq("workflow_name", workflowName);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as Run[];
+}
+
+export interface StepWithWorkflow extends Step {
+  workflow_name: string;
+  run_status: string;
+}
+
+export async function fetchAllSteps(workflowName?: string): Promise<StepWithWorkflow[]> {
+  let runsQuery = supabase
+    .from("workflow_runs")
+    .select("id, workflow_name, status")
+    .order("started_at", { ascending: false })
+    .limit(50);
+  if (workflowName) {
+    runsQuery = runsQuery.eq("workflow_name", workflowName);
+  }
+  const { data: runs, error: runsError } = await runsQuery;
+  if (runsError) throw runsError;
+  if (!runs || runs.length === 0) return [];
+
+  const runIds = runs.map(r => r.id);
+  const runMap = new Map(runs.map(r => [r.id, r]));
+
+  const { data: steps, error: stepsError } = await supabase
+    .from("workflow_steps")
+    .select("*")
+    .in("run_id", runIds)
+    .order("started_at", { ascending: false })
+    .limit(200);
+  if (stepsError) throw stepsError;
+
+  return (steps ?? []).map(s => ({
+    ...s,
+    workflow_name: runMap.get(s.run_id)?.workflow_name ?? "unknown",
+    run_status: runMap.get(s.run_id)?.status ?? "unknown",
+  })) as StepWithWorkflow[];
 }
