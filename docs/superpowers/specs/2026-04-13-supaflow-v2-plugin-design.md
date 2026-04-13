@@ -31,7 +31,8 @@ supaflow/
 │   └── supaflow/
 │       └── SKILL.md
 ├── commands/
-│   └── supaflow-init.md
+│   ├── supaflow-init.md
+│   └── supaflow-scan.md
 ├── hooks/
 │   └── hooks.json
 ├── assets/
