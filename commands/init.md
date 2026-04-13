@@ -1,11 +1,18 @@
 ---
 name: supaflow-init
-description: Initialize Supaflow in the current project. Copies runtime, creates migration, applies schema, installs dashboard, and scans all Edge Functions for instrumentation.
+description: Initialize or update Supaflow in the current project. Fresh install copies everything and instruments functions. Re-run updates runtime and dashboard assets without touching schema, config, or instrumented code.
 ---
 
-# /supaflow:init — Initialize Supaflow
+# /supaflow:init — Initialize or Update Supaflow
 
-Set up Supaflow in the current Supabase project. This command runs once per project.
+Set up Supaflow in a new project, or update assets in an existing installation.
+
+## Mode Detection
+
+Check if `supaflow.json` exists in the project root:
+
+- **Does NOT exist** → **Fresh Install** (run all steps)
+- **Exists** → **Update Mode** (run only steps 2 and 6, then report)
 
 ## Prerequisites
 
@@ -13,7 +20,7 @@ Set up Supaflow in the current Supabase project. This command runs once per proj
 - Supabase CLI available (`supabase` command)
 - `.env` or `supabase/config.toml` with project credentials
 
-## Steps
+## Steps — Fresh Install
 
 Execute ALL steps sequentially. Do not ask for confirmation between steps (except step 8).
 
@@ -71,11 +78,17 @@ Create `supaflow.json` in the project root with the detected credentials:
 Copy the dashboard from plugin assets:
 
 ```bash
-cp -r "${CLAUDE_PLUGIN_ROOT}/assets/dashboard" ./dashboard
+cp -r "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/src/" dashboard/src/
+cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/index.html" dashboard/index.html
+cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/vite.config.ts" dashboard/vite.config.ts
+cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/package.json" dashboard/package.json
+cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/tsconfig.json" dashboard/tsconfig.json
+cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/tsconfig.app.json" dashboard/tsconfig.app.json 2>/dev/null
+cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/tsconfig.node.json" dashboard/tsconfig.node.json 2>/dev/null
 cd dashboard && npm install
 ```
 
-Update `dashboard/vite.config.ts` to read from the project's `supaflow.json`.
+On fresh install, also update `dashboard/vite.config.ts` to read from the project's `supaflow.json`.
 
 ### 7. Full Scan and Instrument
 
@@ -88,7 +101,7 @@ Load the `supaflow` skill. Then:
    c. Instrument using the skill's decision framework
    d. Track what was changed
 
-### 8. Report
+### 8. Report — Fresh Install
 
 **Do NOT commit automatically.** Show the user a polished summary using the exact format below. Adapt the content to what actually happened — but keep the structure, tone, and ASCII art.
 
@@ -152,6 +165,29 @@ Load the `supaflow` skill. Then:
 
    Your Edge Functions are now production-ready.
    Run /supaflow:scan anytime to catch new uninstrumented code.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+## Steps — Update Mode
+
+When `supaflow.json` already exists, only update the assets. Skip schema, config, credentials, and scan.
+
+1. Run **Step 2** (Copy Runtime)
+2. Run **Step 6** (Install Dashboard)
+3. Show this report:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Supaflow updated.
+
+  ✓ Runtime (supaflow.ts)
+  ✓ Dashboard (src, config, dependencies)
+
+  Your supaflow.json and database schema were not touched.
+  Run /supaflow:scan if you want to re-instrument functions.
+  Review the changes, then commit when ready.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
