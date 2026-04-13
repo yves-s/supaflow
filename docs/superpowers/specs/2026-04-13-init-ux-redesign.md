@@ -32,13 +32,16 @@ EXISTS: supabase/ directory
 EXISTS: credentials in .env, .env.local, or supabase/config.toml
 ```
 
-**Three possible states:**
+**Four possible states:**
 
 | State | Condition | Behavior |
 |---|---|---|
 | **No Supabase** | No `supabase/` dir | Show "Supabase needed" message, stop |
 | **Supabase, no credentials** | `supabase/` exists but no URL/key found | Show "credentials needed" message, stop |
-| **Ready** | `supabase/` + credentials found | Proceed to install |
+| **No Supabase CLI** | `supabase/` + credentials exist but `supabase` command not found | Show "CLI needed" message, stop |
+| **Ready** | `supabase/` + credentials + CLI found | Proceed to install |
+
+**Behavioral change from current init:** The old init asked the user to type in credentials interactively when not found in `.env`. The new init does NOT ask — it stops and tells the user to add them to `.env` first. This is intentional: interactive credential entry is error-prone and credentials should live in `.env` anyway.
 
 ### State: No Supabase
 
@@ -73,6 +76,23 @@ No CLI commands. No technical steps. The user knows how to set up Supabase or ca
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
+### State: No Supabase CLI
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Supabase CLI nicht gefunden.
+
+  Installier es mit: brew install supabase/tap/supabase
+  oder: npm install -g supabase
+
+  Danach lauf /supaflow:init nochmal.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Note: This is the one exception to "no CLI commands" — installing a system tool is a genuine prerequisite the user must do themselves, and the install commands are standard (brew/npm).
+
 ### State: Ready → Install
 
 Execute all steps silently. Show only progress lines:
@@ -89,10 +109,10 @@ Each step either succeeds (✓) or the init stops and reports what went wrong in
 
 **Step details (internal — not shown to user):**
 
-1. **Runtime** — Copy `supaflow.ts` to `supabase/functions/_shared/supaflow.ts`. Create `_shared/` if needed. Fix imports to match project convention (detect from existing code).
-2. **Database schema** — Create migration file, run `supabase db push`. On failure: attempt automatic recovery (`supabase migration repair` etc.). If recovery fails: stop with plain-language message about database connection.
-3. **Dashboard** — Copy dashboard files, run `npm install`.
-4. **Config** — Create `supaflow.json` with auto-detected credentials from `.env` / `.env.local` / `config.toml`. Never use placeholders when real values are available.
+1. **Runtime** — Copy `${CLAUDE_PLUGIN_ROOT}/assets/supaflow.ts` to `supabase/functions/_shared/supaflow.ts`. Create `_shared/` if needed. Fix imports to match project convention (detect from existing code). `CLAUDE_PLUGIN_ROOT` is set automatically by Claude Code when running a plugin command — it points to the plugin's root directory.
+2. **Database schema** — Copy `${CLAUDE_PLUGIN_ROOT}/assets/supaflow_schema.sql` to `supabase/migrations/{TIMESTAMP}_supaflow.sql`, then run `supabase db push`. On failure: attempt automatic recovery (`supabase migration repair` etc.). If recovery fails: stop with plain-language message about database connection.
+3. **Dashboard** — Copy `${CLAUDE_PLUGIN_ROOT}/assets/dashboard/` to `dashboard/` in project root. Then run `cd dashboard && npm install`. On `npm install` failure (missing Node.js, network issues): stop with "Dashboard-Abhängigkeiten konnten nicht installiert werden. Prüf ob Node.js installiert ist und du online bist, dann lauf /supaflow:init nochmal."
+4. **Config** — Create `supaflow.json` in project root with auto-detected credentials from `.env` / `.env.local` / `config.toml`. Never use placeholders when real values are available.
 
 **Schema recovery logic:**
 
@@ -133,6 +153,8 @@ If `supabase db push` fails:
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
+
+**`{N}` = count of subdirectories in `supabase/functions/` excluding `_shared/` and `_utils/`.**
 
 ### Done Screen — No Edge Functions Yet
 
@@ -209,7 +231,7 @@ These rules govern what Claude outputs during the init process:
 4. **No diffs or code changes shown.** The user didn't ask to see code.
 5. **Progress lines use ✓ or ✗ only.** No ○, no →, no bullets.
 6. **One done screen.** Not repeated. Not summarized again after.
-7. **Language matches the user's language.** If the project/conversation is in German, output in German. If English, English.
+7. **Language matches the user's language.** If the project/conversation is in German, output in German. If English, English. The example screens in this spec use mixed language for illustration — the implementer must output consistently in one language per session.
 
 ## Non-Goals
 
