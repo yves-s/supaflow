@@ -1,107 +1,133 @@
-# EdgeFlow — Setup Guide
+# Supaflow — Setup Guide
 
-> **The argument:** n8n gives you a drag-and-drop canvas. Claude + Supabase Edge Functions gives you the same result — with retries, idempotency, DLQ, and a live observability dashboard — in a fraction of the time. No separate service, no vendor lock-in, just code that runs anywhere Deno runs.
-
-EdgeFlow is a production-ready workflow engine built entirely on Supabase Edge Functions. No n8n. No Make. No Zapier. All state lives in Postgres.
+Supaflow is a TypeScript workflow runtime with built-in retries, idempotency, dead letter queues, and a React Flow observability dashboard. All state lives in Postgres.
 
 ---
 
-## Demo Case: Klaviyo → HubSpot Unsubscribe Sync
+## Quick Start
 
-When migrating from HubSpot to Klaviyo, unsubscribes need to be synchronized back. This demo implements the full workflow with realistic mock API calls and all the production patterns you'd need:
-
-- **Idempotency** — webhook retries are deduplicated automatically
-- **Retries with exponential backoff** — 3 attempts (1s / 2s / 4s delays) per step
-- **Dead Letter Queue** — permanently failed steps are captured for manual intervention
-- **Structured logging** — every step's input, output, and error is stored in Postgres
-- **Live observability dashboard** — metrics, step timeline, and DLQ — no external tool needed
-
----
-
-## Local Development (Recommended)
-
-Run both services locally with zero deployment:
+### 1. Apply the schema
 
 ```bash
-# Terminal 1 — Webhook receiver
-deno task webhook
-
-# Terminal 2 — Observability dashboard
-deno task dashboard
+supabase db push
 ```
 
-Open: [http://localhost:8001](http://localhost:8001)
+### 2. Write a workflow
 
-The dashboard connects to your Supabase project directly. No local database needed.
+```typescript
+import { supaflow } from "./_shared/supaflow.ts";
+
+export default supaflow.serve("my-workflow", async (flow) => {
+  const { email } = flow.input<{ email: string }>();
+
+  const user = await flow.step("lookup-user", () => findUser(email));
+  await flow.step("send-welcome", () => sendEmail(user.id));
+});
+```
+
+### 3. Run it
+
+```bash
+deno task example
+```
+
+```bash
+curl -X POST http://localhost:8000 \
+  -H "Content-Type: application/json" \
+  -d '{"orderId": "ORD-001", "email": "test@example.com", "items": [{"sku": "A", "quantity": 1, "price": 10}]}'
+```
+
+### 4. Open the dashboard
+
+```bash
+cd dashboard && npm install && npm run dev
+```
+
+Open [http://localhost:3001](http://localhost:3001)
+
+---
+
+## API Reference
+
+### `supaflow.serve(name, handler)`
+
+Wraps `Deno.serve()`. Handles JSON parsing, idempotency (`Idempotency-Key` header or SHA-256 of body), run creation, and error responses.
+
+```typescript
+export default supaflow.serve("workflow-name", async (flow) => {
+  // workflow logic
+});
+```
+
+### `flow.input<T>()`
+
+Returns the parsed request body with TypeScript generics for type safety.
+
+### `flow.step(name, fn, options?)`
+
+Executes a workflow step with retries, structured logging, and DLQ on failure.
+
+- On success: returns the step function's return value
+- On failure (after all retries): throws, writes to DLQ, marks run as failed
+- Partial failure: wrap in try/catch to continue the run
+
+**Options:**
+
+| Option | Default | Description |
+|---|---|---|
+| `maxAttempts` | 3 | Number of retry attempts |
+| `backoff` | [1000, 2000, 4000] | Delay (ms) between retries |
+| `timeout` | 30000 | Step timeout in ms |
 
 ---
 
 ## Schema
 
-Four tables form the EdgeFlow engine:
+Four Postgres tables:
 
 | Table | Purpose |
 |---|---|
-| `idempotency_keys` | Prevents duplicate execution on webhook retries |
-| `workflow_runs` | One record per trigger (pending → running → completed/failed) |
-| `step_states` | Tracks every logical step with retry count, input/output, errors |
-| `dead_letter_queue` | Permanently failed steps that need manual intervention |
-
-Apply the migration:
-
-```bash
-supabase db push
-# or
-supabase migration up
-```
+| `idempotency_keys` | Deduplicates webhook retries |
+| `workflow_runs` | One record per trigger (status, duration, error) |
+| `step_states` | Every step with input, output, retries, duration, order |
+| `dead_letter_queue` | Failed steps for manual intervention |
 
 ---
 
-## Scenarios
+## Dashboard
 
-| Scenario | Behavior |
-|---|---|
-| `happy` | All 3 unsubscribes succeed |
-| `partial_failure` | Subscription `sub_002` fails after 3 retries → DLQ |
-| `total_failure` | All unsubscribes fail → 3 DLQ entries |
-| `slow` | 2s delay per step (shows timing in metrics) |
-| `duplicate` | Same request sent twice — second is idempotency-skipped |
+React Flow observability UI. Connects to Supabase directly via anon key.
 
----
-
-## Test
-
-```bash
-deno test --allow-env supabase/functions/tests/klaviyo-unsubscribe.test.ts
-```
+**Features:**
+- Workflow list with run counts and success rates
+- Run history with status, duration, time
+- Interactive flow graph (zoom, pan, minimap)
+- Step detail panel (input, output, error, retries, DLQ status)
+- Metrics bar (total runs, success rate, avg duration, DLQ count, running)
 
 ---
 
-## Trigger Manually
+## Configuration
 
-```bash
-curl -X POST http://localhost:8000 \
-  -H "Authorization: Bearer dc3cb30dfe1614cc61933efcd8ede51314d65f4c58e6e1b3" \
-  -H "Content-Type: application/json" \
-  -d '{"email": "test@example.com", "scenario": "happy"}'
+`supaflow.json` in project root:
+
+```json
+{
+  "supabase_url": "https://xxx.supabase.co",
+  "supabase_anon_key": "eyJ...",
+  "dashboard_port": 3001
+}
 ```
+
+Runtime reads `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` from environment variables.
+Dashboard reads from `supaflow.json`; env vars (`VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`) override.
 
 ---
 
-## Deploy to Supabase (Optional)
-
-### 1. Set Secrets
+## Tests
 
 ```bash
-supabase secrets set WEBHOOK_SECRET=your-secret-here
-supabase secrets set KLAVIYO_FUNCTION_URL=https://<project-ref>.supabase.co/functions/v1/klaviyo-unsubscribe
-```
-
-### 2. Deploy Edge Functions
-
-```bash
-supabase functions deploy klaviyo-unsubscribe
-supabase functions deploy demo-dashboard
+deno task test
 ```
 
 ---
@@ -109,38 +135,18 @@ supabase functions deploy demo-dashboard
 ## Architecture
 
 ```
-Webhook
-  └── klaviyo-unsubscribe (Edge Function)
-        ├── checkIdempotency()     -> idempotency_keys
-        ├── createRun()            -> workflow_runs
-        ├── executeStep("extract_email")
-        ├── executeStep("fetch_subscriptions")   <- mockGetSubscriptions
-        ├── executeStep("unsubscribe_sub_001")   <- mockUnsubscribe (retry x 3)
-        ├── executeStep("unsubscribe_sub_002")   <- mockUnsubscribe (retry x 3)
-        ├── executeStep("unsubscribe_sub_003")   <- mockUnsubscribe (retry x 3)
-        │     └── on final failure -> dead_letter_queue
-        └── completeRun()          -> workflow_runs
+Webhook Request
+  └── supaflow.serve("workflow-name", handler)
+        ├── Idempotency check      → idempotency_keys
+        ├── Create run              → workflow_runs
+        ├── flow.step("step-1")     → step_states (retry × N)
+        ├── flow.step("step-2")     → step_states (retry × N)
+        │     └── on final failure  → dead_letter_queue
+        └── Complete run            → workflow_runs
 
-Dashboard (demo-dashboard Edge Function)
-        ├── GET /            -> HTML observability UI
-        ├── GET /api/metrics -> { total, completed, failed, dlqCount, successRate, avgMs }
-        ├── GET /api/runs    -> workflow_runs + step_states
-        ├── GET /api/dlq     -> dead_letter_queue entries
-        └── POST /api/trigger -> proxies to klaviyo-unsubscribe
+Dashboard (Vite + React Flow)
+  └── Supabase JS client (anon key, read-only)
+        ├── workflow_runs   → sidebar, metrics
+        ├── step_states     → flow graph
+        └── dead_letter_queue → DLQ panel
 ```
-
-All state lives in Postgres. No Redis, no external queue, no n8n.
-
----
-
-## Why Not n8n?
-
-| | n8n | EdgeFlow |
-|---|---|---|
-| **Setup** | Docker or cloud subscription | `deno task webhook` |
-| **State** | Internal DB (opaque) | Your Postgres — full control |
-| **Retries** | Built-in, configurable in UI | Code — explicit, version-controlled |
-| **Idempotency** | Manual workarounds | Built-in, insert-on-conflict |
-| **Observability** | n8n execution log | Custom dashboard, queryable via SQL |
-| **Cost** | $20–50+/month cloud | $0 (Supabase free tier) |
-| **Speed to build** | Drag canvas + configure | Describe to Claude → done |

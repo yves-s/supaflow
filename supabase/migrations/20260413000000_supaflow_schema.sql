@@ -1,37 +1,44 @@
--- 1. idempotency_keys: Verhindert doppelte Ausführung bei Webhook-Retries
+-- Supaflow Schema
+
+-- 1. Idempotency keys: prevents duplicate webhook execution
 create table if not exists idempotency_keys (
   key text primary key,
   created_at timestamptz not null default now()
 );
 
--- 2. workflow_runs: Jeder Trigger = ein Run
+-- 2. Workflow runs: one record per trigger invocation
 create table if not exists workflow_runs (
   id uuid primary key default gen_random_uuid(),
   workflow_name text not null,
   trigger_type text not null,
   trigger_payload jsonb,
-  status text not null default 'pending' check (status in ('pending', 'running', 'completed', 'failed')),
+  status text not null default 'pending'
+    check (status in ('pending', 'running', 'completed', 'failed')),
   started_at timestamptz not null default now(),
   completed_at timestamptz,
+  duration_ms int,
   error text,
   metadata jsonb
 );
 
--- 3. step_states: Jeder logische Schritt wird getrackt
+-- 3. Step states: every logical step within a run
 create table if not exists step_states (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references workflow_runs(id) on delete cascade,
   step_name text not null,
-  status text not null default 'pending' check (status in ('pending', 'running', 'completed', 'failed', 'skipped')),
+  status text not null default 'pending'
+    check (status in ('pending', 'running', 'completed', 'failed', 'skipped')),
   input jsonb,
   output jsonb,
   attempt int not null default 1,
   error text,
   started_at timestamptz not null default now(),
-  completed_at timestamptz
+  completed_at timestamptz,
+  duration_ms int,
+  "order" int not null default 0
 );
 
--- 4. dead_letter_queue: Endgültig fehlgeschlagene Steps
+-- 4. Dead letter queue: permanently failed steps
 create table if not exists dead_letter_queue (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references workflow_runs(id) on delete cascade,
@@ -45,22 +52,26 @@ create table if not exists dead_letter_queue (
 );
 
 -- Indexes
-create index if not exists idx_step_states_run_id on step_states(run_id);
-create index if not exists idx_dead_letter_queue_run_id on dead_letter_queue(run_id);
 create index if not exists idx_workflow_runs_status on workflow_runs(status);
-create index if not exists idx_dead_letter_queue_resolved on dead_letter_queue(resolved_at) where resolved_at is null;
+create index if not exists idx_workflow_runs_name on workflow_runs(workflow_name);
+create index if not exists idx_step_states_run_id on step_states(run_id);
+create index if not exists idx_step_states_order on step_states(run_id, "order");
+create index if not exists idx_dead_letter_queue_run_id on dead_letter_queue(run_id);
+create index if not exists idx_dead_letter_queue_unresolved
+  on dead_letter_queue(resolved_at) where resolved_at is null;
 
--- RLS: Public read for demo (allow anon to read all tables)
+-- RLS
 alter table workflow_runs enable row level security;
 alter table step_states enable row level security;
 alter table dead_letter_queue enable row level security;
 alter table idempotency_keys enable row level security;
 
-create policy "public read workflow_runs" on workflow_runs for select using (true);
-create policy "public read step_states" on step_states for select using (true);
-create policy "public read dead_letter_queue" on dead_letter_queue for select using (true);
+-- Read access for dashboard (anon key)
+create policy "anon read workflow_runs" on workflow_runs for select using (true);
+create policy "anon read step_states" on step_states for select using (true);
+create policy "anon read dead_letter_queue" on dead_letter_queue for select using (true);
 
--- Service role full access (edge functions use service role key)
+-- Write access for edge functions (service role)
 create policy "service insert workflow_runs" on workflow_runs for insert with check (true);
 create policy "service update workflow_runs" on workflow_runs for update using (true);
 create policy "service insert step_states" on step_states for insert with check (true);

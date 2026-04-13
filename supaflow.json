@@ -1,0 +1,5 @@
+{
+  "supabase_url": "https://xxaozubvzgqavrgydohm.supabase.co",
+  "supabase_anon_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4YW96dWJ2emdxYXZyZ3lkb2htIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM2OTcwMjMsImV4cCI6MjA4OTI3MzAyM30.YQiOxzuhI-g0QadmghqBYhSVnozm9Ipc67ostGhwuT8",
+  "dashboard_port": 3001
+}

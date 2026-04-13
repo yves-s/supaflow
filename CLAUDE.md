@@ -7,7 +7,7 @@
 
 ## Projekt
 
-**edge-flow** – Visual workflow automation platform (n8n alternative). Greenfield project, Stack noch nicht festgelegt.
+**Supaflow** – TypeScript workflow runtime with retries, idempotency, DLQ, and React Flow observability dashboard. Built on Supabase Edge Functions.
 
 ---
 
@@ -19,7 +19,10 @@
 - **Sprache:** Commit Messages auf Englisch
 
 ### Code
-- Stack noch nicht festgelegt — wird nach erster Implementierung ergänzt
+- **Runtime:** Deno + TypeScript (supabase/functions/)
+- **Dashboard:** React 18 + Vite + @xyflow/react + dagre (dashboard/)
+- **Database:** Supabase Postgres with RLS
+- **Config:** supaflow.json (project root)
 
 ### Dateien
 - Keine Dateien löschen ohne explizite Anweisung
@@ -64,7 +67,16 @@ curl -s -X PATCH -H "X-Pipeline-Key: {pipeline.api_key}" \
 
 ## Architektur
 
-Greenfield — noch keine Projektstruktur vorhanden. Wird nach Initialisierung ergänzt.
+```
+supabase/functions/_shared/supaflow.ts  — Runtime (serve, step, idempotency, retries, DLQ)
+supabase/functions/example-workflow/    — Example workflow using the API
+supabase/functions/tests/               — Deno tests
+supabase/migrations/                    — Postgres schema (4 tables)
+dashboard/                              — React Flow observability UI (Vite)
+supaflow.json                           — Config (Supabase URL, anon key, port)
+```
+
+**Commands:** `deno task example` (run workflow), `deno task test` (tests), `cd dashboard && npm run dev` (dashboard)
 
 ---
 

@@ -1,0 +1,25 @@
+{
+  "name": "supaflow-dashboard",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2",
+    "@xyflow/react": "^12",
+    "dagre": "^0.8.5",
+    "react": "^18",
+    "react-dom": "^18"
+  },
+  "devDependencies": {
+    "@types/dagre": "^0.7",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "@vitejs/plugin-react": "^4",
+    "typescript": "^5",
+    "vite": "^5"
+  }
+}
