@@ -5,6 +5,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ## [Unreleased]
 
+### Added
+- Dashboard tab navigation (Flow / Errors / Logs) for switching between views
+- Errors view showing failed runs and Dead Letter Queue entries with detail panel integration
+- Logs view showing chronological step list across all runs with workflow filtering
+- Workflow-filtered KPIs — metrics update when selecting a workflow in the sidebar
+- Skeleton loading states for all dashboard tabs
+- Error count badge on Errors tab
+
 ### Changed
 - Restructured from standalone project to Claude Code Plugin
 - Runtime, schema, and dashboard moved to `assets/` (copied to projects on init)
