@@ -90,27 +90,74 @@ Load the `supaflow` skill. Then:
 
 ### 8. Report
 
-**Do NOT commit automatically.** Show the user a summary:
+**Do NOT commit automatically.** Show the user a polished summary using the exact format below. Adapt the content to what actually happened — but keep the structure, tone, and ASCII art.
+
+**Rules for the report:**
+- Use simple language. No jargon, no file paths in the summary section.
+- Group what happened into clear categories.
+- If schema wasn't applied (no local Supabase), put the manual step in "What you need to do" — otherwise omit it.
+- "What you need to do" contains ONLY things the user must do manually. If everything worked, say so.
+- Each manual step must explain exactly what to do and why, in one sentence.
+- End with the ASCII art. Always.
 
 ```
-Supaflow initialized:
-  ✓ Runtime copied to supabase/functions/_shared/supaflow.ts
-  ✓ Migration created: supabase/migrations/{timestamp}_supaflow.sql
-  ✓ Schema applied to database
-  ✓ Config created: supaflow.json
-  ✓ Dashboard installed: dashboard/
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Instrumented {N} Edge Functions:
-  - {function-name}: {number of steps} steps, {changes made}
-  - ...
+  Setup complete.
 
-  Review the changes, then commit when ready.
+  What was installed:
+    ✓ Workflow runtime (retries, idempotency, logging)
+    ✓ Database schema (4 tables: runs, steps, errors, dedup)
+    ✓ Dashboard app (visual workflow monitor)
+    ✓ Config file with your Supabase credentials
+
+  What was instrumented:
+    ✓ {function-name} — {N} steps ({brief description of what the steps do})
+    ✓ {function-name} — {N} steps ({brief description})
+    ...
+
+  {If there were skipped functions:}
+    ○ {function-name} — no external calls, nothing to instrument
+
+  {If schema was NOT applied:}
+  What you need to do:
+
+    1. Apply the database schema
+       Run: supabase migration repair --status reverted {timestamp}
+       Then: supabase db push
+       This creates the tables Supaflow needs to track your workflows.
+
+    2. Add your real Supabase credentials to supaflow.json
+       Replace the placeholder values for supabase_url and supabase_anon_key.
+       You find them in your Supabase dashboard under Settings → API.
+
+    3. Review the changes, then commit when you're happy.
+
+  {If schema WAS applied:}
+  What you need to do:
+
+    1. Review the instrumented functions — Claude added retries and
+       error handling to every external call. Check that it looks right.
+
+    2. Commit when you're happy.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+   ███████╗██╗   ██╗██████╗  █████╗ ███████╗██╗      ██████╗ ██╗    ██╗
+   ██╔════╝██║   ██║██╔══██╗██╔══██╗██╔════╝██║     ██╔═══██╗██║    ██║
+   ███████╗██║   ██║██████╔╝███████║█████╗  ██║     ██║   ██║██║ █╗ ██║
+   ╚════██║██║   ██║██╔═══╝ ██╔══██║██╔══╝  ██║     ██║   ██║██║███╗██║
+   ███████║╚██████╔╝██║     ██║  ██║██║     ███████╗╚██████╔╝╚███╔███╔╝
+   ╚══════╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝
+
+   Your Edge Functions are now production-ready.
+   Run /supaflow:scan anytime to catch new uninstrumented code.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
-
-Let the user review all changes before committing.
 
 ## Error Handling
 
-- If Supabase CLI is not available: warn, skip schema apply, continue
-- If no Edge Functions found: skip scan, inform user ("no functions to instrument yet")
-- If a function cannot be instrumented (too complex, unclear structure): skip it, report it
+- If Supabase CLI is not available: warn, skip schema apply, add manual step to report
+- If no Edge Functions found: skip scan, show "No functions found yet — write one and run /supaflow:scan"
+- If a function cannot be instrumented (too complex, unclear structure): skip it, mention in report with reason
