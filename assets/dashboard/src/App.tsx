@@ -2,25 +2,31 @@ import { useState, useEffect, useCallback } from "react";
 import type { Node, Edge, NodeMouseHandler } from "@xyflow/react";
 import Sidebar from "./components/Sidebar";
 import MetricsBar from "./components/MetricsBar";
+import TabBar, { type TabId } from "./components/TabBar";
 import FlowGraph from "./components/FlowGraph";
 import DetailPanel from "./components/DetailPanel";
+import ErrorsView from "./components/ErrorsView";
+import LogsView from "./components/LogsView";
 import {
   fetchWorkflows,
   fetchRuns,
   fetchSteps,
   fetchMetrics,
   fetchDlqEntries,
+  fetchFailedRuns,
+  fetchAllSteps,
   type WorkflowSummary,
   type Run,
   type Step,
   type Metrics,
   type DlqEntry,
+  type StepWithWorkflow,
 } from "./lib/queries";
 import { buildGraph } from "./lib/graph";
 import type { StepNodeData } from "./components/StepNode";
 
 function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return "—";
+  if (!dateStr) return "--";
   const diff = Date.now() - new Date(dateStr).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s ago`;
@@ -36,6 +42,7 @@ export default function App() {
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabId>("flow");
 
   // Data state
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
@@ -43,35 +50,31 @@ export default function App() {
   const [steps, setSteps] = useState<Step[]>([]);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
   const [dlqEntries, setDlqEntries] = useState<DlqEntry[]>([]);
+  const [failedRuns, setFailedRuns] = useState<Run[]>([]);
+  const [allSteps, setAllSteps] = useState<StepWithWorkflow[]>([]);
 
   // Loading state
   const [loadingWorkflows, setLoadingWorkflows] = useState(true);
   const [loadingRuns, setLoadingRuns] = useState(true);
   const [loadingSteps, setLoadingSteps] = useState(false);
   const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [loadingErrors, setLoadingErrors] = useState(false);
+  const [loadingLogs, setLoadingLogs] = useState(false);
 
   // Graph state
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  // Fetch on mount
+  // Fetch workflows on mount
   useEffect(() => {
     setLoadingWorkflows(true);
     fetchWorkflows()
       .then(setWorkflows)
       .catch(console.error)
       .finally(() => setLoadingWorkflows(false));
-
-    setLoadingMetrics(true);
-    fetchMetrics()
-      .then(setMetrics)
-      .catch(console.error)
-      .finally(() => setLoadingMetrics(false));
-
-    fetchDlqEntries().then(setDlqEntries).catch(console.error);
   }, []);
 
-  // Refetch runs when workflow filter changes
+  // Refetch runs + metrics when workflow filter changes
   useEffect(() => {
     setLoadingRuns(true);
     setSelectedRunId(null);
@@ -83,6 +86,12 @@ export default function App() {
       .then(setRuns)
       .catch(console.error)
       .finally(() => setLoadingRuns(false));
+
+    setLoadingMetrics(true);
+    fetchMetrics(selectedWorkflow ?? undefined)
+      .then(setMetrics)
+      .catch(console.error)
+      .finally(() => setLoadingMetrics(false));
   }, [selectedWorkflow]);
 
   // Refetch steps when run changes
@@ -99,7 +108,7 @@ export default function App() {
 
     Promise.all([
       fetchSteps(selectedRunId),
-      fetchDlqEntries(selectedRunId),
+      fetchDlqEntries({ runId: selectedRunId }),
     ])
       .then(([fetchedSteps, dlq]) => {
         setSteps(fetchedSteps);
@@ -112,12 +121,36 @@ export default function App() {
       .finally(() => setLoadingSteps(false));
   }, [selectedRunId]);
 
+  // Fetch data for Errors/Logs tabs on tab or workflow change
+  useEffect(() => {
+    if (activeTab === "errors") {
+      setLoadingErrors(true);
+      Promise.all([
+        fetchFailedRuns(selectedWorkflow ?? undefined),
+        fetchDlqEntries({ workflowName: selectedWorkflow ?? undefined }),
+      ])
+        .then(([failedRunsResult, dlq]) => {
+          setFailedRuns(failedRunsResult);
+          setDlqEntries(dlq);
+        })
+        .catch(console.error)
+        .finally(() => setLoadingErrors(false));
+    } else if (activeTab === "logs") {
+      setLoadingLogs(true);
+      fetchAllSteps(selectedWorkflow ?? undefined)
+        .then(setAllSteps)
+        .catch(console.error)
+        .finally(() => setLoadingLogs(false));
+    }
+  }, [activeTab, selectedWorkflow]);
+
   const handleSelectWorkflow = useCallback((name: string | null) => {
     setSelectedWorkflow(name);
   }, []);
 
   const handleSelectRun = useCallback((id: string) => {
     setSelectedRunId(id);
+    setActiveTab("flow");
   }, []);
 
   const handleNodeClick: NodeMouseHandler = useCallback(
@@ -131,6 +164,71 @@ export default function App() {
     setSelectedStepId(null);
   }, []);
 
+  // Error/Log click handlers -- build StepNodeData for DetailPanel
+  const handleErrorRunClick = useCallback((runId: string) => {
+    setSelectedRunId(runId);
+    setActiveTab("flow");
+  }, []);
+
+  const handleDlqClick = useCallback((entry: DlqEntry) => {
+    // Show DLQ detail in the detail panel by constructing step-like data
+    setSelectedStepId(entry.step_id ?? entry.id);
+    // We need to set a synthetic node for the detail panel
+    const syntheticData: StepNodeData = {
+      label: entry.step_id ? `step:${entry.step_id.slice(0, 8)}` : "DLQ Entry",
+      stepId: entry.step_id ?? entry.id,
+      status: "failed",
+      duration_ms: null,
+      attempt: 1,
+      error: entry.error,
+      input: entry.payload,
+      output: null,
+    };
+    // Store in nodes so the derived value picks it up
+    setNodes((prev) => {
+      const id = entry.step_id ?? entry.id;
+      const exists = prev.find((n) => n.id === id);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          id,
+          type: "step",
+          position: { x: 0, y: 0 },
+          data: syntheticData,
+        },
+      ];
+    });
+  }, []);
+
+  const handleLogStepClick = useCallback((step: StepWithWorkflow) => {
+    setSelectedStepId(step.id);
+    // Add synthetic node for detail panel
+    const syntheticData: StepNodeData = {
+      label: step.name,
+      stepId: step.id,
+      status: step.status,
+      duration_ms: step.duration_ms,
+      attempt: step.attempt,
+      error: step.error,
+      input: step.input,
+      output: step.output,
+    };
+    setNodes((prev) => {
+      const exists = prev.find((n) => n.id === step.id);
+      if (exists) return prev;
+      return [
+        ...prev,
+        {
+          id: step.id,
+          type: "step",
+          position: { x: 0, y: 0 },
+          data: syntheticData,
+        },
+      ];
+    });
+  }, []);
+
   // Derived values
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
   const selectedStepData: StepNodeData | null = selectedStepId
@@ -139,6 +237,9 @@ export default function App() {
   const selectedDlqEntry = selectedStepId
     ? dlqEntries.find((d) => d.step_id === selectedStepId) ?? null
     : null;
+
+  // Error count for tab badge
+  const errorCount = (metrics?.dlqCount ?? 0) + failedRuns.length;
 
   // steps is used in the effects above; suppress unused var by referencing it
   void steps;
@@ -159,58 +260,90 @@ export default function App() {
       <div className="main-area">
         <MetricsBar metrics={metrics} loading={loadingMetrics} />
 
-        {/* Run header */}
-        <div className="run-header">
-          {selectedRun ? (
-            <>
-              <span className="run-header-name">{selectedRun.workflow_name}</span>
-              <span className="run-header-id">
-                {selectedRun.id.slice(0, 8)}
-              </span>
-              <span className={`status-badge ${selectedRun.status}`}>
-                {selectedRun.status}
-              </span>
-              <span className="run-header-time">
-                {timeAgo(selectedRun.started_at)}
-              </span>
-            </>
-          ) : (
-            <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-              Select a run to inspect its steps
-            </span>
-          )}
-        </div>
+        <TabBar
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          errorCount={errorCount}
+        />
 
-        {/* Flow canvas */}
-        <div className="flow-area">
-          {loadingSteps ? (
-            <div className="empty-state">
-              <div className="empty-state-title">Loading steps…</div>
+        {activeTab === "flow" && (
+          <>
+            {/* Run header */}
+            <div className="run-header">
+              {selectedRun ? (
+                <>
+                  <span className="run-header-name">{selectedRun.workflow_name}</span>
+                  <span className="run-header-id">
+                    {selectedRun.id.slice(0, 8)}
+                  </span>
+                  <span className={`status-badge ${selectedRun.status}`}>
+                    {selectedRun.status}
+                  </span>
+                  <span className="run-header-time">
+                    {timeAgo(selectedRun.started_at)}
+                  </span>
+                </>
+              ) : (
+                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                  Select a run to inspect its steps
+                </span>
+              )}
             </div>
-          ) : selectedRunId && nodes.length > 0 ? (
-            <FlowGraph
-              nodes={nodes}
-              edges={edges}
-              onNodeClick={handleNodeClick}
+
+            {/* Flow canvas */}
+            <div className="flow-area">
+              {loadingSteps ? (
+                <div className="empty-state">
+                  <div className="empty-state-title">Loading steps...</div>
+                </div>
+              ) : selectedRunId && nodes.length > 0 ? (
+                <FlowGraph
+                  nodes={nodes}
+                  edges={edges}
+                  onNodeClick={handleNodeClick}
+                />
+              ) : selectedRunId && !loadingSteps && nodes.length === 0 ? (
+                <div className="empty-state">
+                  <div className="empty-state-icon">&#9675;</div>
+                  <div className="empty-state-title">No steps recorded</div>
+                  <div className="empty-state-sub">
+                    This run has no step data yet
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <div className="empty-state-icon">&#11041;</div>
+                  <div className="empty-state-title">No run selected</div>
+                  <div className="empty-state-sub">
+                    Pick a run from the sidebar to visualize its steps
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {activeTab === "errors" && (
+          <div className="tab-content">
+            <ErrorsView
+              failedRuns={failedRuns}
+              dlqEntries={dlqEntries}
+              loading={loadingErrors}
+              onSelectRun={handleErrorRunClick}
+              onSelectDlq={handleDlqClick}
             />
-          ) : selectedRunId && !loadingSteps && nodes.length === 0 ? (
-            <div className="empty-state">
-              <div className="empty-state-icon">○</div>
-              <div className="empty-state-title">No steps recorded</div>
-              <div className="empty-state-sub">
-                This run has no step data yet
-              </div>
-            </div>
-          ) : (
-            <div className="empty-state">
-              <div className="empty-state-icon">⬡</div>
-              <div className="empty-state-title">No run selected</div>
-              <div className="empty-state-sub">
-                Pick a run from the sidebar to visualize its steps
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+
+        {activeTab === "logs" && (
+          <div className="tab-content">
+            <LogsView
+              steps={allSteps}
+              loading={loadingLogs}
+              onSelectStep={handleLogStepClick}
+            />
+          </div>
+        )}
       </div>
 
       {selectedStepData && (
