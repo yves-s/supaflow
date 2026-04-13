@@ -5,7 +5,7 @@
   "author": {
     "name": "Yves Schleich"
   },
-  "repository": "https://github.com/yves-s/edge-flow",
+  "repository": "https://github.com/yves-s/supaflow",
   "license": "MIT",
   "keywords": ["supabase", "workflows", "observability", "edge-functions", "retries", "error-handling"]
 }
