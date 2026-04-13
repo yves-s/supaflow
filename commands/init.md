@@ -1,158 +1,179 @@
 ---
 name: supaflow-init
-description: Initialize or update Supaflow in the current project. Fresh install copies everything and instruments functions. Re-run updates runtime and dashboard assets without touching schema, config, or instrumented code.
+description: Initialize or update Supaflow in the current project. Fresh install sets up runtime, schema, dashboard, and config. Re-run updates runtime and dashboard without touching schema or config.
 ---
 
 # /supaflow:init — Initialize or Update Supaflow
 
 Set up Supaflow in a new project, or update assets in an existing installation.
 
+## Output Rules — READ FIRST
+
+These rules override your default behavior for this entire command:
+
+1. **No thinking out loud.** No "Key observations before instrumenting", no "Let me check the dashboard config".
+2. **No file paths in user-facing output.** Say "Runtime" not "supabase/functions/_shared/supaflow.ts".
+3. **No CLI commands as instructions.** Either do it yourself or say what's missing in plain language.
+4. **No diffs or code changes shown.** The user didn't ask to see code.
+5. **Progress lines use ✓ or ✗ only.** No ○, no →, no bullets.
+6. **One done screen.** Not repeated. Not summarized again after.
+7. **Language matches the user's language.** If the conversation is in German, output in German. If English, English. Be consistent — don't mix languages within one screen.
+
 ## Mode Detection
 
 Check if `supaflow.json` exists in the project root:
 
-- **Does NOT exist** → **Fresh Install** (run all steps)
-- **Exists** → **Update Mode** (run only steps 2 and 6, then report)
+- **Does NOT exist** → **Fresh Install**
+- **Exists** → **Update Mode**
 
-## Prerequisites
+---
 
-- Supabase project initialized (`supabase/` directory exists)
-- Supabase CLI available (`supabase` command)
-- `.env` or `supabase/config.toml` with project credentials
+## Fresh Install
 
-## Steps — Fresh Install
+### Phase 1: Detect
 
-Execute ALL steps sequentially. Do not ask for confirmation between steps (except step 8).
+Check preconditions in this order. Stop at the first failure.
 
-### 1. Detect Project
+**1. Supabase project**
 
-Find Supabase credentials:
+Check if `supabase/` directory exists.
 
-1. Check `.env` or `.env.local` for `SUPABASE_URL` and `SUPABASE_ANON_KEY`
-2. Check `supabase/config.toml` for project reference
-3. If neither found: ask the user for Supabase URL and anon key
-
-Store the values for later steps.
-
-### 2. Copy Runtime
-
-Copy `supaflow.ts` from the plugin assets into the project:
-
-```bash
-cp "${CLAUDE_PLUGIN_ROOT}/assets/supaflow.ts" supabase/functions/_shared/supaflow.ts
-```
-
-If `supabase/functions/_shared/` does not exist, create it.
-
-### 3. Create Migration
-
-Copy the schema SQL from plugin assets:
-
-```bash
-TIMESTAMP=$(date +%Y%m%d%H%M%S)
-cp "${CLAUDE_PLUGIN_ROOT}/assets/supaflow_schema.sql" "supabase/migrations/${TIMESTAMP}_supaflow.sql"
-```
-
-### 4. Apply Schema
-
-```bash
-supabase db push
-```
-
-If this fails (e.g., no local Supabase, remote-only): inform the user and continue. The schema can be applied later.
-
-### 5. Create Config
-
-Create `supaflow.json` in the project root with the detected credentials:
-
-```json
-{
-  "supabase_url": "<detected>",
-  "supabase_anon_key": "<detected>",
-  "dashboard_port": 3001
-}
-```
-
-### 6. Install Dashboard
-
-Copy the dashboard from plugin assets:
-
-```bash
-cp -r "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/src/" dashboard/src/
-cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/index.html" dashboard/index.html
-cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/vite.config.ts" dashboard/vite.config.ts
-cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/package.json" dashboard/package.json
-cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/tsconfig.json" dashboard/tsconfig.json
-cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/tsconfig.app.json" dashboard/tsconfig.app.json 2>/dev/null
-cp "${CLAUDE_PLUGIN_ROOT}/assets/dashboard/tsconfig.node.json" dashboard/tsconfig.node.json 2>/dev/null
-cd dashboard && npm install
-```
-
-On fresh install, also update `dashboard/vite.config.ts` to read from the project's `supaflow.json`.
-
-### 7. Full Scan and Instrument
-
-Load the `supaflow` skill. Then:
-
-1. Find all Edge Functions: `ls supabase/functions/*/index.ts` (excluding `_shared/`)
-2. For each function:
-   a. Read the code
-   b. Identify: entry point (Deno.serve), external calls, multi-step flows
-   c. Instrument using the skill's decision framework
-   d. Track what was changed
-
-### 8. Report — Fresh Install
-
-**Do NOT commit automatically.** Show the user a polished summary using the exact format below. Adapt the content to what actually happened — but keep the structure, tone, and ASCII art.
-
-**Rules for the report:**
-- Use simple language. No jargon, no file paths in the summary section.
-- Group what happened into clear categories.
-- If schema wasn't applied (no local Supabase), put the manual step in "What you need to do" — otherwise omit it.
-- "What you need to do" contains ONLY things the user must do manually. If everything worked, say so.
-- Each manual step must explain exactly what to do and why, in one sentence.
-- End with the ASCII art. Always.
+If it does NOT exist, output this screen and stop:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  Setup complete.
+  Supaflow needs a Supabase project.
 
-  What was installed:
-    ✓ Workflow runtime (retries, idempotency, logging)
-    ✓ Database schema (4 tables: runs, steps, errors, dedup)
-    ✓ Dashboard app (visual workflow monitor)
-    ✓ Config file with your Supabase credentials
+  Create one at supabase.com and connect it
+  to this repo. Then run /supaflow:init again.
 
-  What was instrumented:
-    ✓ {function-name} — {N} steps ({brief description of what the steps do})
-    ✓ {function-name} — {N} steps ({brief description})
-    ...
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
 
-  {If there were skipped functions:}
-    ○ {function-name} — no external calls, nothing to instrument
+**2. Credentials**
 
-  {If schema was NOT applied:}
-  What you need to do:
+Look for `SUPABASE_URL` and `SUPABASE_ANON_KEY` in `.env`, `.env.local`, or `supabase/config.toml`.
 
-    1. Apply the database schema
-       Run: supabase migration repair --status reverted {timestamp}
-       Then: supabase db push
-       This creates the tables Supaflow needs to track your workflows.
+If neither is found, output this screen and stop:
 
-    2. Add your real Supabase credentials to supaflow.json
-       Replace the placeholder values for supabase_url and supabase_anon_key.
-       You find them in your Supabase dashboard under Settings → API.
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    3. Review the changes, then commit when you're happy.
+  Supabase project found, but credentials
+  are missing.
 
-  {If schema WAS applied:}
-  What you need to do:
+  Add SUPABASE_URL and SUPABASE_ANON_KEY to
+  your .env file. You can find them in your
+  Supabase dashboard under Settings → API.
 
-    1. Review the instrumented functions — Claude added retries and
-       error handling to every external call. Check that it looks right.
+  Then run /supaflow:init again.
 
-    2. Commit when you're happy.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Do NOT ask the user to type credentials interactively. They belong in `.env`.
+
+**3. Supabase CLI**
+
+Check if `supabase` command is available (`which supabase`).
+
+If not found, output this screen and stop:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Supabase CLI not found.
+
+  Install it with: brew install supabase/tap/supabase
+  or: npm install -g supabase
+
+  Then run /supaflow:init again.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+If all three checks pass, proceed to Phase 2.
+
+### Phase 2: Install
+
+Output: `Installing Supaflow...`
+
+Execute these 4 steps sequentially. After each success, output `  ✓ {step name}`. On failure, output `  ✗ {step name}` followed by a plain-language error message, then stop.
+
+**Step 1: Runtime**
+
+- Create `supabase/functions/_shared/` if it doesn't exist
+- Copy `${CLAUDE_PLUGIN_ROOT}/assets/supaflow.ts` to `supabase/functions/_shared/supaflow.ts`
+- Check existing Edge Function code for the project's import convention (`jsr:` vs `https://esm.sh` vs `npm:`)
+- If the copied runtime's imports don't match the project convention, fix them silently
+
+Output: `  ✓ Runtime`
+
+**Step 2: Database schema**
+
+- Generate timestamp: `TIMESTAMP=$(date +%Y%m%d%H%M%S)`
+- Copy `${CLAUDE_PLUGIN_ROOT}/assets/supaflow_schema.sql` to `supabase/migrations/${TIMESTAMP}_supaflow.sql`
+- Run `supabase db push`
+- On failure, attempt recovery:
+  - If the error mentions "remote migration" or "not found locally": run `supabase migration repair` for the conflicting migration(s), then retry `supabase db push`
+  - If the error mentions "connect", "connection", or "refused": stop with `  ✗ Database schema` and message: "No database connection. Check that your Supabase project is reachable and run /supaflow:init again."
+  - Any other error: stop with `  ✗ Database schema` and a plain-language description of what went wrong. No raw CLI output.
+
+Output on success: `  ✓ Database schema`
+
+**Step 3: Dashboard**
+
+- Copy dashboard files from `${CLAUDE_PLUGIN_ROOT}/assets/dashboard/` to `dashboard/` in the project root:
+  - `src/` directory
+  - `index.html`
+  - `vite.config.ts`
+  - `package.json`
+  - `tsconfig.json`
+  - `tsconfig.app.json` (if exists in assets)
+  - `tsconfig.node.json` (if exists in assets)
+- Run `cd dashboard && npm install`
+- On failure: stop with `  ✗ Dashboard` and message: "Could not install dashboard dependencies. Check that Node.js is installed and you're online, then run /supaflow:init again."
+
+Output on success: `  ✓ Dashboard`
+
+**Step 4: Config**
+
+- Read the credentials found in Phase 1 (from `.env`, `.env.local`, or `config.toml`)
+- Create `supaflow.json` in the project root:
+
+```json
+{
+  "supabase_url": "<real value from env>",
+  "supabase_anon_key": "<real value from env>",
+  "dashboard_port": 3001
+}
+```
+
+- Use the actual credential values. NEVER use placeholders like `https://<project-ref>.supabase.co`.
+
+Output on success: `  ✓ Config`
+
+### Phase 3: Done
+
+Count Edge Functions: number of subdirectories in `supabase/functions/` excluding `_shared/` and `_utils/`.
+
+**If Edge Functions were found ({N} > 0):**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Supaflow is ready.
+
+  ✓ Runtime, Schema, Dashboard — all set up
+  ✓ {N} Edge Functions found
+
+  Next step:
+    /supaflow:scan — instruments your functions
+    with retries, error handling, and workflow tracking.
+
+  Dashboard:
+    cd dashboard && npm run dev → http://localhost:3001
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -164,36 +185,54 @@ Load the `supaflow` skill. Then:
    ╚══════╝ ╚═════╝ ╚═╝     ╚═╝  ╚═╝╚═╝     ╚══════╝ ╚═════╝  ╚══╝╚══╝
 
    Your Edge Functions are now production-ready.
-   Run /supaflow:scan anytime to catch new uninstrumented code.
+   Run /supaflow:scan anytime to catch new code.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-## Steps — Update Mode
+**If no Edge Functions were found:**
 
-When `supaflow.json` already exists, only update the assets. Skip schema, config, credentials, and scan.
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-1. Run **Step 2** (Copy Runtime)
-2. Run **Step 6** (Install Dashboard)
-3. Show this report:
+  Supaflow is ready.
+
+  ✓ Runtime, Schema, Dashboard — all set up
+
+  No Edge Functions found yet.
+  Write your first function, then run
+  /supaflow:scan to instrument it.
+
+  Dashboard:
+    cd dashboard && npm run dev → http://localhost:3001
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+```
+
+Do NOT commit automatically. Do NOT show additional summaries after the done screen.
+
+---
+
+## Update Mode
+
+When `supaflow.json` already exists, only update runtime and dashboard assets.
+
+1. Run **Phase 2 Step 1** (Runtime)
+2. Run **Phase 2 Step 3** (Dashboard)
+3. Output this screen:
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   Supaflow updated.
 
-  ✓ Runtime (supaflow.ts)
-  ✓ Dashboard (src, config, dependencies)
+  ✓ Runtime
+  ✓ Dashboard
 
-  Your supaflow.json and database schema were not touched.
-  Run /supaflow:scan if you want to re-instrument functions.
-  Review the changes, then commit when ready.
+  Schema and config were not changed.
+  Run /supaflow:scan to re-instrument functions.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```
 
-## Error Handling
-
-- If Supabase CLI is not available: warn, skip schema apply, add manual step to report
-- If no Edge Functions found: skip scan, show "No functions found yet — write one and run /supaflow:scan"
-- If a function cannot be instrumented (too complex, unclear structure): skip it, mention in report with reason
+Do NOT touch schema, config, or instrumented code during updates.
