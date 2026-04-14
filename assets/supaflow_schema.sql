@@ -70,16 +70,27 @@ alter table dead_letter_queue enable row level security;
 alter table idempotency_keys enable row level security;
 
 -- Read access for dashboard (anon key)
+drop policy if exists "anon read workflow_runs" on workflow_runs;
 create policy "anon read workflow_runs" on workflow_runs for select using (true);
+drop policy if exists "anon read step_states" on step_states;
 create policy "anon read step_states" on step_states for select using (true);
+drop policy if exists "anon read dead_letter_queue" on dead_letter_queue;
 create policy "anon read dead_letter_queue" on dead_letter_queue for select using (true);
 
 -- Write access for edge functions (service role)
+drop policy if exists "service insert workflow_runs" on workflow_runs;
 create policy "service insert workflow_runs" on workflow_runs for insert with check (true);
+drop policy if exists "service update workflow_runs" on workflow_runs;
 create policy "service update workflow_runs" on workflow_runs for update using (true);
+drop policy if exists "service insert step_states" on step_states;
 create policy "service insert step_states" on step_states for insert with check (true);
+drop policy if exists "service update step_states" on step_states;
 create policy "service update step_states" on step_states for update using (true);
+drop policy if exists "service insert dead_letter_queue" on dead_letter_queue;
 create policy "service insert dead_letter_queue" on dead_letter_queue for insert with check (true);
+drop policy if exists "service update dead_letter_queue" on dead_letter_queue;
 create policy "service update dead_letter_queue" on dead_letter_queue for update using (true);
+drop policy if exists "service insert idempotency_keys" on idempotency_keys;
 create policy "service insert idempotency_keys" on idempotency_keys for insert with check (true);
+drop policy if exists "service read idempotency_keys" on idempotency_keys;
 create policy "service read idempotency_keys" on idempotency_keys for select using (true);
