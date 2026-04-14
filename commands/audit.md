@@ -54,7 +54,9 @@ If the request fails (network error, auth error): show the raw error and suggest
 
 ### 3. Cluster Entries by Error Pattern
 
-Group entries by normalized error text. Normalization removes per-entry variation while preserving semantic structure:
+Group entries by the combination of **normalized error text** and **step name prefix** (strip dynamic suffixes — see Error Handling section). Two entries belong to the same cluster only when both their error pattern and their step name pattern match. This prevents a generic error like "timeout" from merging unrelated steps across different workflows into a single cluster.
+
+Normalize error text as follows. Normalization removes per-entry variation while preserving semantic structure:
 
 - Replace UUIDs with `{id}`
 - Replace email addresses with `{email}`
