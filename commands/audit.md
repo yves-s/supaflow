@@ -18,12 +18,23 @@ If `supaflow.json` is not found: output `Supaflow is not initialized. Run /supaf
 
 ### 1. Load Credentials
 
-Read `supaflow.json` from the project root:
+Read `supaflow.json` from the project root. Use whichever tool is available:
 
 ```bash
+# Option A — node (preferred when available)
 SUPABASE_URL=$(node -e "process.stdout.write(require('./supaflow.json').supabase_url)")
 SUPABASE_KEY=$(node -e "process.stdout.write(require('./supaflow.json').supabase_anon_key)")
+
+# Option B — jq (fallback)
+SUPABASE_URL=$(jq -r '.supabase_url' supaflow.json)
+SUPABASE_KEY=$(jq -r '.supabase_anon_key' supaflow.json)
+
+# Option C — python3 (last resort)
+SUPABASE_URL=$(python3 -c "import json; d=json.load(open('supaflow.json')); print(d['supabase_url'], end='')")
+SUPABASE_KEY=$(python3 -c "import json; d=json.load(open('supaflow.json')); print(d['supabase_anon_key'], end='')")
 ```
+
+Try Option A first. If `node` is not found, try Option B, then Option C. If none of the three are available, output: `Cannot parse supaflow.json — install node, jq, or python3 and retry.` and stop.
 
 ### 2. Query Unresolved DLQ Entries
 
