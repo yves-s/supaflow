@@ -110,8 +110,8 @@ export default function ErrorsView({
                 </div>
                 <div className="error-message dlq">{entry.error}</div>
                 <div className="error-meta">
-                  {entry.step_id && (
-                    <span className="error-step">step: {entry.step_id.slice(0, 8)}</span>
+                  {entry.step_name && (
+                    <span className="error-step">step: {entry.step_name}</span>
                   )}
                 </div>
               </div>

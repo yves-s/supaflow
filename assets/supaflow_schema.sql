@@ -42,6 +42,7 @@ create table if not exists step_states (
 create table if not exists dead_letter_queue (
   id uuid primary key default gen_random_uuid(),
   run_id uuid not null references workflow_runs(id) on delete cascade,
+  workflow_name text not null,
   step_name text not null,
   input jsonb,
   error text not null,
@@ -59,6 +60,8 @@ create index if not exists idx_step_states_order on step_states(run_id, "order")
 create index if not exists idx_dead_letter_queue_run_id on dead_letter_queue(run_id);
 create index if not exists idx_dead_letter_queue_unresolved
   on dead_letter_queue(resolved_at) where resolved_at is null;
+create index if not exists idx_dead_letter_queue_workflow
+  on dead_letter_queue(workflow_name);
 
 -- RLS
 alter table workflow_runs enable row level security;

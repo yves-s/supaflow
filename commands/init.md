@@ -120,7 +120,7 @@ Load the `supaflow` skill. Then:
 
   What was installed:
     ✓ Workflow runtime (retries, idempotency, logging)
-    ✓ Database schema (4 tables: runs, steps, errors, dedup)
+    ✓ Database schema (runs, steps, dead letter queue, dedup)
     ✓ Dashboard app (visual workflow monitor)
     ✓ Config file with your Supabase credentials
 
@@ -171,11 +171,36 @@ Load the `supaflow` skill. Then:
 
 ## Steps — Update Mode
 
-When `supaflow.json` already exists, only update the assets. Skip schema, config, credentials, and scan.
+When `supaflow.json` already exists, update assets and apply any pending schema changes.
 
 1. Run **Step 2** (Copy Runtime)
 2. Run **Step 6** (Install Dashboard)
-3. Show this report:
+3. **Apply schema migrations** (new step — see below)
+4. Show the update report
+
+### 3. Apply Schema Migrations
+
+Schema changes are part of every update. Apply them automatically using the ensure file:
+
+```bash
+TIMESTAMP=$(date +%Y%m%d%H%M%S)
+cp "${CLAUDE_PLUGIN_ROOT}/assets/supaflow_ensure.sql" \
+   "supabase/migrations/${TIMESTAMP}_supaflow_ensure.sql"
+supabase db push
+```
+
+**If `supabase` CLI is not available:** skip silently and add this to the report:
+
+```
+  ⚠ Schema migrations pending
+    Run: supabase db push
+    Or apply supabase/migrations/*_supaflow_ensure.sql manually.
+    Until then, some dashboard features may not work correctly.
+```
+
+The ensure file uses `IF NOT EXISTS` / `IF EXISTS` throughout — safe to re-run on any version.
+
+### 4. Update Report
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -184,8 +209,11 @@ When `supaflow.json` already exists, only update the assets. Skip schema, config
 
   ✓ Runtime (supaflow.ts)
   ✓ Dashboard (src, config, dependencies)
+  ✓ Schema migrations applied
 
-  Your supaflow.json and database schema were not touched.
+  {If schema migrations were skipped:}
+  ⚠ Schema migrations pending — run: supabase db push
+
   Run /supaflow:scan if you want to re-instrument functions.
   Review the changes, then commit when ready.
 

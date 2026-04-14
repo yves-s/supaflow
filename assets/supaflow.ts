@@ -8,6 +8,8 @@ export interface StepOptions {
   maxAttempts?: number;
   backoff?: number[];
   timeout?: number;
+  /** Data to record as step input for observability. Appears in the dashboard detail panel. */
+  input?: Record<string, unknown>;
 }
 
 export interface FlowContext {
@@ -103,6 +105,7 @@ export async function completeRun(
 export async function executeStep<T>(
   supabase: SupabaseClient,
   runId: string,
+  workflowName: string,
   stepName: string,
   stepOrder: number,
   fn: () => Promise<T>,
@@ -194,6 +197,7 @@ export async function executeStep<T>(
 
   await supabase.from("dead_letter_queue").insert({
     run_id: runId,
+    workflow_name: workflowName,
     step_name: stepName,
     input: input ?? null,
     error: lastError?.message ?? "unknown error",
@@ -268,7 +272,7 @@ export const supaflow = {
         },
         async step<T>(name: string, fn: () => Promise<T>, options?: StepOptions): Promise<T> {
           stepOrder++;
-          return executeStep<T>(supabase, runId, name, stepOrder, fn, undefined, options);
+          return executeStep<T>(supabase, runId, workflowName, name, stepOrder, fn, options?.input, options);
         },
       };
 

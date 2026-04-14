@@ -37,7 +37,7 @@ export interface Step {
 export interface DlqEntry {
   id: string;
   run_id: string;
-  step_id: string | null;
+  step_name: string | null;
   workflow_name: string;
   error: string;
   payload: Record<string, unknown> | null;
@@ -101,13 +101,13 @@ export async function fetchRuns(workflowName?: string): Promise<Run[]> {
 
 export async function fetchSteps(runId: string): Promise<Step[]> {
   const { data, error } = await supabase
-    .from("workflow_steps")
+    .from("step_states")
     .select("*")
     .eq("run_id", runId)
     .order("order", { ascending: true });
 
   if (error) throw error;
-  return (data ?? []) as Step[];
+  return (data ?? []).map((s) => ({ ...s, name: s.step_name })) as Step[];
 }
 
 export async function fetchMetrics(workflowName?: string): Promise<Metrics> {
@@ -116,7 +116,7 @@ export async function fetchMetrics(workflowName?: string): Promise<Metrics> {
     runsQuery = runsQuery.eq("workflow_name", workflowName);
   }
 
-  let dlqQuery = supabase.from("workflow_dlq").select("id").is("resolved_at", null);
+  let dlqQuery = supabase.from("dead_letter_queue").select("id", { count: "exact", head: true }).is("resolved_at", null);
   if (workflowName) {
     dlqQuery = dlqQuery.eq("workflow_name", workflowName);
   }
@@ -138,15 +138,15 @@ export async function fetchMetrics(workflowName?: string): Promise<Metrics> {
       ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
       : 0;
 
-  const dlqCount = dlqResult.data?.length ?? 0;
+  const dlqCount = dlqResult.count ?? 0;
 
   return { totalRuns, successRate, avgDurationMs, dlqCount, runningCount };
 }
 
 export async function fetchDlqEntries(opts?: { runId?: string; workflowName?: string }): Promise<DlqEntry[]> {
   let query = supabase
-    .from("workflow_dlq")
-    .select("*")
+    .from("dead_letter_queue")
+    .select("id, run_id, workflow_name, step_name, payload:input, error, created_at, resolved_at")
     .is("resolved_at", null)
     .order("created_at", { ascending: false });
 
@@ -212,15 +212,16 @@ export async function fetchAllSteps(workflowName?: string): Promise<StepWithWork
   const runMap = new Map(runs.map(r => [r.id, r]));
 
   const { data: steps, error: stepsError } = await supabase
-    .from("workflow_steps")
+    .from("step_states")
     .select("*")
     .in("run_id", runIds)
     .order("started_at", { ascending: false })
     .limit(200);
   if (stepsError) throw stepsError;
 
-  return (steps ?? []).map(s => ({
+  return (steps ?? []).map((s) => ({
     ...s,
+    name: s.step_name,
     workflow_name: runMap.get(s.run_id)?.workflow_name ?? "unknown",
     run_status: runMap.get(s.run_id)?.status ?? "unknown",
   })) as StepWithWorkflow[];

@@ -114,18 +114,20 @@ export default function App() {
     setLoadingSteps(true);
     setSelectedStepId(null);
 
-    Promise.all([
+    Promise.allSettled([
       fetchSteps(selectedRunId),
       fetchDlqEntries({ runId: selectedRunId }),
     ])
-      .then(([fetchedSteps, dlq]) => {
+      .then(([stepsResult, dlqResult]) => {
+        const fetchedSteps = stepsResult.status === "fulfilled" ? stepsResult.value : [];
+        if (stepsResult.status === "rejected") console.error(stepsResult.reason);
+        if (dlqResult.status === "fulfilled") setDlqEntries(dlqResult.value);
+        else console.error(dlqResult.reason);
         setSteps(fetchedSteps);
-        setDlqEntries(dlq);
         const { nodes: n, edges: e } = buildGraph(fetchedSteps);
         setNodes(n);
         setEdges(e);
       })
-      .catch(console.error)
       .finally(() => setLoadingSteps(false));
   }, [selectedRunId]);
 
@@ -133,15 +135,16 @@ export default function App() {
   useEffect(() => {
     if (activeTab === "errors") {
       setLoadingErrors(true);
-      Promise.all([
+      Promise.allSettled([
         fetchFailedRuns(selectedWorkflow ?? undefined),
         fetchDlqEntries({ workflowName: selectedWorkflow ?? undefined }),
       ])
-        .then(([failedRunsResult, dlq]) => {
-          setFailedRuns(failedRunsResult);
-          setDlqEntries(dlq);
+        .then(([failedRunsResult, dlqResult]) => {
+          if (failedRunsResult.status === "fulfilled") setFailedRuns(failedRunsResult.value);
+          else console.error(failedRunsResult.reason);
+          if (dlqResult.status === "fulfilled") setDlqEntries(dlqResult.value);
+          else console.error(dlqResult.reason);
         })
-        .catch(console.error)
         .finally(() => setLoadingErrors(false));
     } else if (activeTab === "logs") {
       setLoadingLogs(true);
@@ -158,7 +161,6 @@ export default function App() {
 
   const handleSelectRun = useCallback((id: string) => {
     setSelectedRunId(id);
-    setActiveTab("flow");
   }, []);
 
   const handleNodeClick: NodeMouseHandler = useCallback(
@@ -180,11 +182,12 @@ export default function App() {
 
   const handleDlqClick = useCallback((entry: DlqEntry) => {
     // Show DLQ detail in the detail panel by constructing step-like data
-    setSelectedStepId(entry.step_id ?? entry.id);
+    const stepKey = entry.step_name ?? entry.id;
+    setSelectedStepId(stepKey);
     // We need to set a synthetic node for the detail panel
     const syntheticData: StepNodeData = {
-      label: entry.step_id ? `step:${entry.step_id.slice(0, 8)}` : "DLQ Entry",
-      stepId: entry.step_id ?? entry.id,
+      label: entry.step_name ?? "DLQ Entry",
+      stepId: stepKey,
       status: "failed",
       duration_ms: null,
       attempt: 1,
@@ -194,7 +197,7 @@ export default function App() {
     };
     // Store in nodes so the derived value picks it up
     setNodes((prev) => {
-      const id = entry.step_id ?? entry.id;
+      const id = entry.step_name ?? entry.id;
       const exists = prev.find((n) => n.id === id);
       if (exists) return prev;
       return [
@@ -243,7 +246,7 @@ export default function App() {
     ? (nodes.find((n) => n.id === selectedStepId)?.data as StepNodeData) ?? null
     : null;
   const selectedDlqEntry = selectedStepId
-    ? dlqEntries.find((d) => d.step_id === selectedStepId) ?? null
+    ? dlqEntries.find((d) => (d.step_name ?? d.id) === selectedStepId) ?? null
     : null;
 
   // Error count for tab badge
@@ -253,7 +256,7 @@ export default function App() {
   void steps;
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden" }}>
+    <div style={{ display: "flex", height: "100vh", width: "100%", overflow: "hidden" }}>
       <Sidebar
         workflows={workflows}
         runs={runs}

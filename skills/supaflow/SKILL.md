@@ -74,7 +74,20 @@ await flow.step("name", fn, {
   maxAttempts: 5,                    // default: 3
   backoff: [2000, 4000, 8000, 16000], // default: [1000, 2000, 4000]
   timeout: 60_000,                   // default: 30000 (ms)
+  input: { userId, email },          // recorded in dashboard for debugging
 });
+```
+
+**`input` is required for observability.** Always pass the relevant identifiers so failures are debuggable. Without `input`, the step appears with no context in the dashboard — you can see the error but not what data caused it.
+
+```typescript
+// ✅ Debuggable: dashboard shows which email caused the failure
+const contact = await flow.step("create-contact", () => klaviyo.create(email), {
+  input: { email },
+});
+
+// ❌ Not debuggable: step shows error but no input context
+const contact = await flow.step("create-contact", () => klaviyo.create(email));
 ```
 
 ## Decision Framework

@@ -1,7 +1,14 @@
 assets/dashboard/node_modules/
 assets/dashboard/dist/
+assets/dashboard/tsconfig.tsbuildinfo
 .superpowers/
 .claude/
 .pipeline/
 .env.local
 deno.lock
+project.json
+node_modules/
+packages/
+
+# Pipeline dependencies (auto-installed)
+.pipeline/node_modules
