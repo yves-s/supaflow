@@ -158,7 +158,7 @@ Apply fix for Cluster {N}? [yes / skip]
 
 If confirmed:
 
-1. Read the Edge Function file
+1. Use the Edge Function code already loaded in Step 4a. If the function was marked "not in this project" in Step 4a, output: `Cannot apply fix — Edge Function file not found in this project. Apply the fix manually.` and skip to the next cluster.
 2. Apply the minimal change that addresses the root cause
 3. Do NOT refactor surrounding code
 4. Do NOT add features beyond the fix
