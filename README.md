@@ -66,6 +66,14 @@ Just write your Edge Functions normally. The PostToolUse hook detects edits to `
 
 Scans all Edge Functions and instruments any gaps.
 
+### Audit DLQ errors
+
+```
+/supaflow:audit
+```
+
+Analyzes unresolved Dead Letter Queue entries, groups them by error pattern, reads the relevant Edge Function code, and proposes targeted fixes. Works for any workflow or API — no hardcoded patterns. Confirms before applying each fix.
+
 ## API
 
 ### `supaflow.serve(name, handler)`
