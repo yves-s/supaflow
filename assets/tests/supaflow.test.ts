@@ -83,7 +83,7 @@ Deno.test("createRun — creates workflow run and returns id", async () => {
 Deno.test("executeStep — happy path returns output", async () => {
   const supabase = createMockSupabase();
   const output = await executeStep(
-    supabase, "run-id", "test_step", 1,
+    supabase, "run-id", "test-workflow", "test_step", 1,
     async () => ({ result: "ok" }),
     { input: "data" }
   );
@@ -96,7 +96,7 @@ Deno.test("executeStep — retries on failure, throws after max attempts", async
 
   await assertRejects(
     () => executeStep(
-      supabase, "run-id", "failing_step", 1,
+      supabase, "run-id", "test-workflow", "failing_step", 1,
       async () => { attempts++; throw new Error("fail"); },
       undefined,
       { maxAttempts: 3, backoff: [0, 0, 0] }
@@ -114,7 +114,7 @@ Deno.test("executeStep — respects custom maxAttempts", async () => {
 
   await assertRejects(
     () => executeStep(
-      supabase, "run-id", "custom_step", 1,
+      supabase, "run-id", "test-workflow", "custom_step", 1,
       async () => { attempts++; throw new Error("fail"); },
       undefined,
       { maxAttempts: 5, backoff: [0, 0, 0, 0, 0] }
