@@ -176,12 +176,18 @@ After applying a fix (or if the user wants to clean up without a code fix), offe
 Mark {count} entries for Cluster {N} as resolved? [yes / skip]
 ```
 
-If yes, attempt the PATCH with the anon key. Use both `workflow_name` and `step_name` in the filter to scope the update to exactly this cluster and avoid accidentally resolving entries from other clusters that share the same workflow name:
+If yes, attempt the PATCH with the anon key. Use both `workflow_name` and `step_name` in the filter to scope the update to exactly this cluster and avoid accidentally resolving entries from other clusters that share the same workflow name.
+
+// SECURITY: workflow_name and step_name come from DLQ query results. URL-encode them before
+// interpolating into the query string to prevent filter injection (e.g. a workflow_name
+// containing "&resolved_at=is.not.null" would corrupt the PostgREST filter).
 
 ```bash
 RESOLVED_AT=$(node -e "process.stdout.write(new Date().toISOString())")
+WF_ENCODED=$(node -e "process.stdout.write(encodeURIComponent('{workflow_name}'))")
+STEP_ENCODED=$(node -e "process.stdout.write(encodeURIComponent('{step_name}'))")
 curl -s -X PATCH \
-  "${SUPABASE_URL}/rest/v1/dead_letter_queue?workflow_name=eq.{workflow_name}&step_name=eq.{step_name}&resolved_at=is.null" \
+  "${SUPABASE_URL}/rest/v1/dead_letter_queue?workflow_name=eq.${WF_ENCODED}&step_name=eq.${STEP_ENCODED}&resolved_at=is.null" \
   -H "apikey: ${SUPABASE_KEY}" \
   -H "Authorization: Bearer ${SUPABASE_KEY}" \
   -H "Content-Type: application/json" \
