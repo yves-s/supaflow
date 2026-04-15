@@ -1,22 +1,18 @@
 {
-  "name": "supaflow",
+  "name": "supaflow-marketplace",
+  "description": "Marketplace for Supaflow — automatic workflow instrumentation for Supabase Edge Functions",
   "owner": {
     "name": "Yves Schleich"
-  },
-  "metadata": {
-    "description": "Automatic workflow instrumentation for Supabase Edge Functions"
   },
   "plugins": [
     {
       "name": "supaflow",
-      "source": "./",
-      "description": "Automatic workflow instrumentation for Supabase Edge Functions. Adds retries, error handling, logging, idempotency, and dead letter queues.",
+      "description": "Automatic workflow instrumentation for Supabase Edge Functions",
       "version": "1.0.0",
+      "source": "./",
       "author": {
         "name": "Yves Schleich"
-      },
-      "license": "MIT",
-      "keywords": ["supabase", "workflows", "observability", "edge-functions"]
+      }
     }
   ]
 }
