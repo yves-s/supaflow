@@ -1,12 +1,21 @@
-export type TabId = "flow" | "errors" | "logs";
+export type TabId = "flow" | "issues" | "logs";
 
 interface TabBarProps {
   activeTab: TabId;
   onTabChange: (tab: TabId) => void;
   errorCount: number;
+  unresolvedCount?: number;
 }
 
-export default function TabBar({ activeTab, onTabChange, errorCount }: TabBarProps) {
+export default function TabBar({
+  activeTab,
+  onTabChange,
+  errorCount,
+  unresolvedCount,
+}: TabBarProps) {
+  // Show unresolvedCount on Issues tab when available, otherwise fall back to errorCount
+  const issuesBadge = unresolvedCount !== undefined ? unresolvedCount : errorCount;
+
   return (
     <div className="tab-bar">
       <button
@@ -16,11 +25,13 @@ export default function TabBar({ activeTab, onTabChange, errorCount }: TabBarPro
         Flow
       </button>
       <button
-        className={`tab-item${activeTab === "errors" ? " active" : ""}`}
-        onClick={() => onTabChange("errors")}
+        className={`tab-item${activeTab === "issues" ? " active" : ""}`}
+        onClick={() => onTabChange("issues")}
       >
-        Errors
-        {errorCount > 0 && <span className="tab-count red">{errorCount}</span>}
+        Issues
+        {issuesBadge > 0 && (
+          <span className="tab-count red">{issuesBadge}</span>
+        )}
       </button>
       <button
         className={`tab-item${activeTab === "logs" ? " active" : ""}`}

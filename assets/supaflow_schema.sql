@@ -94,3 +94,32 @@ drop policy if exists "service insert idempotency_keys" on idempotency_keys;
 create policy "service insert idempotency_keys" on idempotency_keys for insert with check (true);
 drop policy if exists "service read idempotency_keys" on idempotency_keys;
 create policy "service read idempotency_keys" on idempotency_keys for select using (true);
+
+-- 5. Issues: status flags for grouped error patterns
+create table if not exists supaflow_issues (
+  id uuid primary key default gen_random_uuid(),
+  workflow_name text not null,
+  step_name text not null,
+  error_pattern text not null,
+  status text not null default 'unresolved'
+    check (status in ('unresolved', 'resolved', 'ignored')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(workflow_name, step_name, error_pattern)
+);
+
+create index if not exists idx_supaflow_issues_workflow
+  on supaflow_issues(workflow_name);
+
+-- RLS
+alter table supaflow_issues enable row level security;
+
+-- Anon: read + insert + update (status flags are UI state, not sensitive)
+drop policy if exists "anon read supaflow_issues" on supaflow_issues;
+create policy "anon read supaflow_issues" on supaflow_issues for select using (true);
+
+drop policy if exists "anon insert supaflow_issues" on supaflow_issues;
+create policy "anon insert supaflow_issues" on supaflow_issues for insert with check (true);
+
+drop policy if exists "anon update supaflow_issues" on supaflow_issues;
+create policy "anon update supaflow_issues" on supaflow_issues for update using (true);

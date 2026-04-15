@@ -6,6 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 ## [Unreleased]
 
 ### Added
+- Issues tab replacing Errors tab: groups failed runs by (workflow_name, step_name, error_pattern) into Sentry-style issue rows with count badge, 9-bucket 24h sparkline, first/last seen timestamps, trend arrow, and unresolved/resolved/ignored status
+- `supaflow_issues` table for storing issue status (unresolved/resolved/ignored) keyed by (workflow_name, step_name, error_pattern)
+- `computeErrorPattern` — normalises error messages by stripping 4+ digit sequences → `<ID>` and UUID tokens → `<UUID>`
+- Issue side panel with error details, affected run IDs (clickable → Flow tab), and resolve/ignore action buttons
+- Freshness indicator in MetricsBar: pulsing green dot + "vor Xs" when data <30s old, grey dot when stale
+- Manual refresh button (↺) next to freshness indicator
+- Stale data banner shown below MetricsBar when last fetch failed
+- 30-second auto-refresh interval for metrics, issues, and running count
+- Metric trend deltas (↑↓) below Success Rate, Total Runs, Avg Duration — comparing current elapsed window to same window yesterday
+- Coverage indicator per workflow in Sidebar: green dot (activity <24h) / yellow triangle (silent >24h) / no icon (<3 records)
+- Coverage hover tooltip: "Letzter Step vor Xh · N bekannte Steps"
+- Issues view toolbar: search input + Unresolved/Ignored/Resolved filter chips + Issues/Runs view toggle
+- vitest + jsdom for testing pure dashboard functions; 8 tests for `computeErrorPattern` and `buildSparklineBuckets`
+
+### Changed
+- Dashboard tab "Errors" renamed to "Issues"; tab badge now shows unresolved issue count instead of raw failed run count
+- `fetchMetrics` extended with optional `from`/`to` time window for trend delta comparison
+
+### Added
 - Dashboard tab navigation (Flow / Errors / Logs) for switching between views
 - Errors view showing failed runs and Dead Letter Queue entries with detail panel integration
 - Logs view showing chronological step list across all runs with workflow filtering

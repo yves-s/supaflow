@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import type { Node, Edge, NodeMouseHandler } from "@xyflow/react";
 import Sidebar from "./components/Sidebar";
 import MetricsBar from "./components/MetricsBar";
 import TabBar, { type TabId } from "./components/TabBar";
 import FlowGraph from "./components/FlowGraph";
 import DetailPanel from "./components/DetailPanel";
-import ErrorsView from "./components/ErrorsView";
+import IssuesView from "./components/IssuesView";
 import LogsView from "./components/LogsView";
 import {
   fetchWorkflows,
@@ -16,6 +16,8 @@ import {
   fetchFailedRuns,
   fetchFailedRunCount,
   fetchAllSteps,
+  fetchFailedStepsForIssues,
+  fetchIssueStatuses,
   type WorkflowSummary,
   type Run,
   type Step,
@@ -23,6 +25,7 @@ import {
   type DlqEntry,
   type StepWithWorkflow,
 } from "./lib/queries";
+import { groupIntoIssues } from "./lib/issues";
 import { buildGraph } from "./lib/graph";
 import type { StepNodeData } from "./components/StepNode";
 
@@ -36,6 +39,15 @@ function timeAgo(dateStr: string | null): string {
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
   return `${Math.floor(h / 24)}d ago`;
+}
+
+function timeAgoMs(ms: number | null): string {
+  if (!ms) return "—";
+  const diff = Date.now() - ms;
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  return `${m}m`;
 }
 
 export default function App() {
@@ -54,6 +66,18 @@ export default function App() {
   const [failedRuns, setFailedRuns] = useState<Run[]>([]);
   const [failedRunCount, setFailedRunCount] = useState(0);
   const [allSteps, setAllSteps] = useState<StepWithWorkflow[]>([]);
+  const [unresolvedCount, setUnresolvedCount] = useState(0);
+
+  // Freshness state
+  const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
+  const [fetchError, setFetchError] = useState(false);
+
+  // Delta (trend) state
+  const [deltas, setDeltas] = useState<{
+    successRate?: number;
+    totalRuns?: number;
+    avgDuration?: number;
+  }>({});
 
   // Loading state
   const [loadingWorkflows, setLoadingWorkflows] = useState(true);
@@ -67,7 +91,73 @@ export default function App() {
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  // Fetch workflows on mount
+  // Track selected workflow ref to avoid stale closures in refresh
+  const selectedWorkflowRef = useRef(selectedWorkflow);
+  selectedWorkflowRef.current = selectedWorkflow;
+
+  // ── Metrics fetch (with yesterday delta) ──────────────────────────────────
+
+  const fetchMetricsWithDeltas = useCallback(async (workflowName: string | null) => {
+    setLoadingMetrics(true);
+    try {
+      const now = new Date();
+      const elapsedMin = now.getHours() * 60 + now.getMinutes();
+      const todayFrom = new Date(now.getTime() - elapsedMin * 60_000);
+      const yesterdayFrom = new Date(todayFrom.getTime() - 24 * 60 * 60_000);
+      const yesterdayTo = new Date(now.getTime() - 24 * 60 * 60_000);
+
+      const wf = workflowName ?? undefined;
+      const [currentMetrics, yesterdayMetrics, count] = await Promise.all([
+        fetchMetrics(wf, todayFrom, now),
+        fetchMetrics(wf, yesterdayFrom, yesterdayTo),
+        fetchFailedRunCount(wf),
+      ]);
+
+      setMetrics(currentMetrics);
+      setFailedRunCount(count);
+      setDeltas({
+        successRate: currentMetrics.successRate - yesterdayMetrics.successRate,
+        totalRuns: currentMetrics.totalRuns - yesterdayMetrics.totalRuns,
+        avgDuration: currentMetrics.avgDurationMs - yesterdayMetrics.avgDurationMs,
+      });
+      setLastFetchedAt(Date.now());
+      setFetchError(false);
+    } catch (err) {
+      console.error("Failed to fetch metrics:", err);
+      setFetchError(true);
+    } finally {
+      setLoadingMetrics(false);
+    }
+  }, []);
+
+  // ── Unresolved issues count for tab badge ─────────────────────────────────
+
+  const refreshUnresolvedCount = useCallback(async (workflowName: string | null) => {
+    try {
+      const [steps, storedStatuses] = await Promise.all([
+        fetchFailedStepsForIssues(workflowName ?? undefined),
+        fetchIssueStatuses(workflowName ?? undefined),
+      ]);
+      const issues = groupIntoIssues(steps, storedStatuses, Date.now());
+      setUnresolvedCount(issues.filter((i) => i.status === "unresolved").length);
+    } catch (err) {
+      console.error("Failed to refresh unresolved count:", err);
+    }
+  }, []);
+
+  // ── Full refresh ───────────────────────────────────────────────────────────
+
+  const refresh = useCallback(async () => {
+    const wf = selectedWorkflowRef.current;
+    await Promise.allSettled([
+      fetchMetricsWithDeltas(wf),
+      fetchRuns(wf ?? undefined).then(setRuns).catch(console.error),
+      refreshUnresolvedCount(wf),
+    ]);
+  }, [fetchMetricsWithDeltas, refreshUnresolvedCount]);
+
+  // ── Initial data fetch ─────────────────────────────────────────────────────
+
   useEffect(() => {
     setLoadingWorkflows(true);
     fetchWorkflows()
@@ -84,23 +174,21 @@ export default function App() {
     setSteps([]);
     setNodes([]);
     setEdges([]);
+
     fetchRuns(selectedWorkflow ?? undefined)
       .then(setRuns)
       .catch(console.error)
       .finally(() => setLoadingRuns(false));
 
-    setLoadingMetrics(true);
-    Promise.all([
-      fetchMetrics(selectedWorkflow ?? undefined),
-      fetchFailedRunCount(selectedWorkflow ?? undefined),
-    ])
-      .then(([m, count]) => {
-        setMetrics(m);
-        setFailedRunCount(count);
-      })
-      .catch(console.error)
-      .finally(() => setLoadingMetrics(false));
-  }, [selectedWorkflow]);
+    fetchMetricsWithDeltas(selectedWorkflow);
+    refreshUnresolvedCount(selectedWorkflow);
+  }, [selectedWorkflow, fetchMetricsWithDeltas, refreshUnresolvedCount]);
+
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const id = setInterval(refresh, 30_000);
+    return () => clearInterval(id);
+  }, [refresh]);
 
   // Refetch steps when run changes
   useEffect(() => {
@@ -119,7 +207,8 @@ export default function App() {
       fetchDlqEntries({ runId: selectedRunId }),
     ])
       .then(([stepsResult, dlqResult]) => {
-        const fetchedSteps = stepsResult.status === "fulfilled" ? stepsResult.value : [];
+        const fetchedSteps =
+          stepsResult.status === "fulfilled" ? stepsResult.value : [];
         if (stepsResult.status === "rejected") console.error(stepsResult.reason);
         if (dlqResult.status === "fulfilled") setDlqEntries(dlqResult.value);
         else console.error(dlqResult.reason);
@@ -131,16 +220,17 @@ export default function App() {
       .finally(() => setLoadingSteps(false));
   }, [selectedRunId]);
 
-  // Fetch data for Errors/Logs tabs on tab or workflow change
+  // Fetch data for Issues/Logs tabs on tab or workflow change
   useEffect(() => {
-    if (activeTab === "errors") {
+    if (activeTab === "issues") {
       setLoadingErrors(true);
       Promise.allSettled([
         fetchFailedRuns(selectedWorkflow ?? undefined),
         fetchDlqEntries({ workflowName: selectedWorkflow ?? undefined }),
       ])
         .then(([failedRunsResult, dlqResult]) => {
-          if (failedRunsResult.status === "fulfilled") setFailedRuns(failedRunsResult.value);
+          if (failedRunsResult.status === "fulfilled")
+            setFailedRuns(failedRunsResult.value);
           else console.error(failedRunsResult.reason);
           if (dlqResult.status === "fulfilled") setDlqEntries(dlqResult.value);
           else console.error(dlqResult.reason);
@@ -161,14 +251,12 @@ export default function App() {
 
   const handleSelectRun = useCallback((id: string) => {
     setSelectedRunId(id);
+    setActiveTab("flow");
   }, []);
 
-  const handleNodeClick: NodeMouseHandler = useCallback(
-    (_event, node) => {
-      setSelectedStepId(node.id);
-    },
-    []
-  );
+  const handleNodeClick: NodeMouseHandler = useCallback((_event, node) => {
+    setSelectedStepId(node.id);
+  }, []);
 
   const handleCloseDetail = useCallback(() => {
     setSelectedStepId(null);
@@ -181,10 +269,8 @@ export default function App() {
   }, []);
 
   const handleDlqClick = useCallback((entry: DlqEntry) => {
-    // Show DLQ detail in the detail panel by constructing step-like data
     const stepKey = entry.step_name ?? entry.id;
     setSelectedStepId(stepKey);
-    // We need to set a synthetic node for the detail panel
     const syntheticData: StepNodeData = {
       label: entry.step_name ?? "DLQ Entry",
       stepId: stepKey,
@@ -195,7 +281,6 @@ export default function App() {
       input: entry.payload,
       output: null,
     };
-    // Store in nodes so the derived value picks it up
     setNodes((prev) => {
       const id = entry.step_name ?? entry.id;
       const exists = prev.find((n) => n.id === id);
@@ -214,7 +299,6 @@ export default function App() {
 
   const handleLogStepClick = useCallback((step: StepWithWorkflow) => {
     setSelectedStepId(step.id);
-    // Add synthetic node for detail panel
     const syntheticData: StepNodeData = {
       label: step.name,
       stepId: step.id,
@@ -249,10 +333,10 @@ export default function App() {
     ? dlqEntries.find((d) => (d.step_name ?? d.id) === selectedStepId) ?? null
     : null;
 
-  // Error count for tab badge
+  // Error count for tab badge (legacy fallback)
   const errorCount = (metrics?.dlqCount ?? 0) + failedRunCount;
 
-  // steps is used in the effects above; suppress unused var by referencing it
+  // steps is used in effects above; suppress unused var
   void steps;
 
   return (
@@ -269,12 +353,27 @@ export default function App() {
       />
 
       <div className="main-area">
-        <MetricsBar metrics={metrics} loading={loadingMetrics} />
+        <MetricsBar
+          metrics={metrics}
+          loading={loadingMetrics}
+          lastFetchedAt={lastFetchedAt}
+          onRefresh={refresh}
+          deltas={deltas}
+        />
+
+        {/* Stale banner */}
+        {fetchError && lastFetchedAt && (
+          <div className="stale-banner">
+            ⚠ Daten konnten nicht aktualisiert werden — zuletzt vor{" "}
+            {timeAgoMs(lastFetchedAt)}
+          </div>
+        )}
 
         <TabBar
           activeTab={activeTab}
           onTabChange={setActiveTab}
           errorCount={errorCount}
+          unresolvedCount={unresolvedCount}
         />
 
         {activeTab === "flow" && (
@@ -283,7 +382,9 @@ export default function App() {
             <div className="run-header">
               {selectedRun ? (
                 <>
-                  <span className="run-header-name">{selectedRun.workflow_name}</span>
+                  <span className="run-header-name">
+                    {selectedRun.workflow_name}
+                  </span>
                   <span className="run-header-id">
                     {selectedRun.id.slice(0, 8)}
                   </span>
@@ -334,13 +435,14 @@ export default function App() {
           </>
         )}
 
-        {activeTab === "errors" && (
+        {activeTab === "issues" && (
           <div className="tab-content">
-            <ErrorsView
+            <IssuesView
+              workflowName={selectedWorkflow}
+              onRunSelect={handleSelectRun}
               failedRuns={failedRuns}
               dlqEntries={dlqEntries}
-              loading={loadingErrors}
-              onSelectRun={handleErrorRunClick}
+              loadingErrors={loadingErrors}
               onSelectDlq={handleDlqClick}
             />
           </div>
