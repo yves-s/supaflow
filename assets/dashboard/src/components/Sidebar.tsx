@@ -1,4 +1,6 @@
-import type { WorkflowSummary, Run } from "../lib/queries";
+import { useState, useEffect } from "react";
+import type { WorkflowSummary, Run, CoverageEntry } from "../lib/queries";
+import { fetchCoverage } from "../lib/queries";
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "—";
@@ -12,6 +14,16 @@ function timeAgo(dateStr: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
+function timeAgoMs(ms: number): string {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
+}
+
 function formatDuration(ms: number | null): string {
   if (ms == null) return "";
   if (ms < 1000) return `${ms}ms`;
@@ -23,6 +35,34 @@ function successRateColor(rate: number): "green" | "amber" | "red" {
   if (rate >= 80) return "green";
   if (rate >= 50) return "amber";
   return "red";
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+interface CoverageIconProps {
+  entry: CoverageEntry | undefined;
+}
+
+function CoverageIcon({ entry }: CoverageIconProps) {
+  if (!entry) return null;
+
+  // New workflow: fewer than 3 total records
+  if (entry.knownStepCount < 3) return null;
+
+  const now = Date.now();
+  const isActive = entry.lastActivityAt !== null && now - entry.lastActivityAt < DAY_MS;
+  const isStale = entry.lastActivityAt === null || now - entry.lastActivityAt >= DAY_MS;
+
+  const tooltipText = entry.lastActivityAt
+    ? `Letzter Step vor ${timeAgoMs(entry.lastActivityAt)} · ${entry.knownStepCount} bekannte Steps`
+    : `Kein Activity · ${entry.knownStepCount} bekannte Steps`;
+
+  return (
+    <span className={`coverage-icon ${isActive ? "ok" : isStale ? "warn" : ""}`}>
+      {isActive ? "●" : "⚠"}
+      <span className="coverage-tooltip">{tooltipText}</span>
+    </span>
+  );
 }
 
 interface SidebarProps {
@@ -46,6 +86,18 @@ export default function Sidebar({
   loadingWorkflows,
   loadingRuns,
 }: SidebarProps) {
+  const [coverage, setCoverage] = useState<CoverageEntry[]>([]);
+
+  useEffect(() => {
+    if (workflows.length === 0) return;
+    const names = workflows.map((w) => w.workflow_name);
+    fetchCoverage(names)
+      .then(setCoverage)
+      .catch(console.error);
+  }, [workflows]);
+
+  const coverageMap = new Map(coverage.map((c) => [c.workflow_name, c]));
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
@@ -84,7 +136,23 @@ export default function Sidebar({
                 onClick={() => onSelectWorkflow(wf.workflow_name)}
               >
                 <div className="sidebar-item-main">
-                  <div className="sidebar-item-name">{wf.workflow_name}</div>
+                  <div
+                    className="sidebar-item-name"
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}
+                  >
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {wf.workflow_name}
+                    </span>
+                    <CoverageIcon entry={coverageMap.get(wf.workflow_name)} />
+                  </div>
                   <div className="sidebar-item-meta">{wf.total_runs} runs</div>
                 </div>
                 <span
