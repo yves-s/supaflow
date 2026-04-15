@@ -18,7 +18,7 @@ A dashboard the user can trust at a glance: grouped issues instead of repeated r
 
 ## Scope
 
-Four changes to the existing React dashboard (`assets/dashboard/`). No navigation restructuring, no new pages, no backend schema changes.
+Four changes to the existing React dashboard (`assets/dashboard/`). No navigation restructuring, no new pages. One new DB table + migration required.
 
 ---
 
@@ -26,30 +26,39 @@ Four changes to the existing React dashboard (`assets/dashboard/`). No navigatio
 
 ### 1. Issues Tab (replaces Errors tab)
 
-**Grouping logic:** Failed runs are clustered by `(workflow_name, step_name, error_pattern)`. The `error_pattern` is derived by stripping numeric IDs from the raw error message — `Failed subscriptions: 680935167` and `Failed subscriptions: 416655910` both map to `Failed subscriptions: <ID>`, becoming a single issue.
+**Grouping logic:** Failed runs are clustered by `(workflow_name, step_name, error_pattern)`. The `error_pattern` is derived by normalising the raw error message with `computeErrorPattern()`:
+- Strip sequences of 4+ consecutive digits → replaced with `<ID>`
+- Strip UUID-format tokens (8-4-4-4-12 hex) → replaced with `<UUID>`
+- All other content is left unchanged
+
+Example: `Failed subscriptions: 680935167, 416655910` → `Failed subscriptions: <ID>, <ID>` (same pattern as `Failed subscriptions: 9110816`).
 
 **Issue list row:**
 - Title: cleaned error pattern (e.g. `Failed subscriptions: <ID>`)
 - Subtitle: `workflow_name › step_name` in monospace
 - Count badge: total affected runs (e.g. `11×`)
-- Sparkline: 9-bucket distribution of occurrences over the last 24h
+- Sparkline: 9 equal-width buckets of ~2h40m each, covering the last 24h. Zero-occurrence buckets render at baseline height. Y-scale is relative to the issue's own maximum bucket count.
 - Timestamps: "Zuerst: 4h ago · Zuletzt: 25s ago"
 - Status badge: `unresolved` (red) / `resolved` (green) / `ignored` (grey)
-- Trend hint: "↑ wird häufiger" when occurrence frequency is increasing
+- Trend hint: "↑ wird häufiger" when the last 3 buckets average higher than the first 3 buckets
 
-**Issue status persistence:** Stored in a new `supaflow_issues` table keyed by `(workflow_name, step_name, error_pattern)`. Status values: `unresolved`, `resolved`, `ignored`. Default on creation: `unresolved`.
+**Issue status persistence:** Stored in `supaflow_issues` table keyed by `(workflow_name, step_name, error_pattern)`. Status values: `unresolved`, `resolved`, `ignored`. Default on creation: `unresolved`.
 
-**Regression detection:** When a new run matches a `resolved` issue's key, the issue is automatically reopened to `unresolved`.
+**Regression detection:** Handled by the population mechanism (see Architecture). When a new run matches a `resolved` issue's key, it is automatically reopened to `unresolved`.
 
 **Side panel (on issue click):**
 - Error message as code block (raw, unsanitized)
-- List of affected runs, each row clickable → switches to Flow tab with that run selected
-- Action buttons: "Als gelöst markieren" / "Ignorieren"
+- List of affected run IDs, each row clickable → switches to Flow tab with that run selected
+- Action buttons: "Als gelöst markieren" / "Ignorieren" — these call `updateIssueStatus()` via a Supabase Edge Function (see RLS note below)
 
 **Toolbar:**
 - Search input (filters by error pattern or workflow name, client-side)
 - Filter chips: Unresolved / Ignored / Resolved
-- Toggle: Issues view / Runs view (Runs view = current list behavior, kept as fallback)
+- Toggle: Issues view / Runs view (Runs view = current ErrorsView behavior, kept as fallback)
+
+**Empty state for filtered view:** When the active filter produces zero results, show: "Keine [Status]-Issues" with a neutral icon, using the existing `.empty-state` CSS pattern.
+
+**Issues tab badge:** Displays count of `unresolved` issues only (not raw failed run count). The current `errorCount = dlqCount + failedRunCount` derivation in `App.tsx` is replaced with the count of issues with `status = 'unresolved'`.
 
 ### 2. Freshness & Auto-Refresh
 
@@ -66,12 +75,12 @@ This makes stale data visible rather than silently trusted.
 
 ### 3. Coverage Indicator
 
-**Detection logic:** A workflow is considered potentially uninstrumented if it exists in the sidebar's workflow list but has produced no `supaflow_steps` records in the last 24 hours. This is a signal, not a guarantee — it detects silence, not missing code.
+**Detection logic:** A workflow is considered potentially uninstrumented if it exists in the sidebar's workflow list but has produced no `step_states` records in the last 24 hours. This is a signal, not a guarantee — it detects silence, not missing code.
 
 **Display:** Inline icon next to the workflow name in the sidebar:
-- Green dot → activity within last 24h
+- Green dot → activity in `step_states` within last 24h
 - Yellow triangle (⚠) → no activity in >24h
-- No icon → new workflow, insufficient history to assess
+- No icon → new workflow with fewer than 3 total records (insufficient history)
 
 **Hover tooltip:** "Letzter Step vor 4h · 3 bekannte Steps" — inline, no separate panel.
 
@@ -114,25 +123,35 @@ create table supaflow_issues (
 );
 ```
 
-RLS: same pattern as existing `supaflow_*` tables (anon read, service role write).
+**RLS:** Anon role gets `SELECT` only. `INSERT` and `UPDATE` go through a dedicated Edge Function (`supaflow-issue-action`) using the service role key. This keeps the dashboard client read-only and avoids granting anon UPDATE on the issues table.
 
-### New query functions (supabase.ts)
+### Population mechanism
 
-- `fetchIssues(workflowName?)` — returns grouped issues with occurrence count and sparkline buckets
-- `updateIssueStatus(id, status)` — patch status field
-- `computeErrorPattern(errorMessage)` — client-side: strip numeric sequences with regex
+A Postgres trigger on `step_states` fires after INSERT/UPDATE when `status = 'failed'`. It:
+1. Calls `computeErrorPattern()` (reimplemented in PL/pgSQL) on the `error` column
+2. Upserts into `supaflow_issues` — incrementing `occurrence_count`, updating `last_seen_at`
+3. If the matched issue has `status = 'resolved'`, reopens it to `unresolved` (regression detection)
+
+`first_seen_at` is set only on initial INSERT (handled by `ON CONFLICT DO UPDATE` leaving it unchanged).
+
+### New query functions (`queries.ts`)
+
+- `fetchIssues(workflowName?)` — reads from `supaflow_issues`, returns issues with sparkline bucket arrays
+- `updateIssueStatus(id, status)` — calls the `supaflow-issue-action` Edge Function (POST), not a direct Supabase client write
+- `computeErrorPattern(errorMessage: string): string` — client-side normalisation for display purposes only; canonical pattern is computed by the DB trigger
+- `fetchMetrics(workflowName?, from?: Date, to?: Date)` — **extended** to accept optional time window; used twice for trend delta (current window + same window yesterday)
 
 ### Modified components
 
-- `TabBar.tsx` — rename "Errors" to "Issues", keep same badge logic
-- `ErrorsView.tsx` → `IssuesView.tsx` — full replacement with grouped issue rows + toolbar
-- `Sidebar.tsx` — add coverage indicator icon + tooltip per workflow
-- `MetricsBar.tsx` — add freshness indicator + delta display
-- `App.tsx` — add 30s auto-refresh interval, error state banner
+- `TabBar.tsx` — rename "Errors" → "Issues"; badge now shows `unresolved` issue count
+- `ErrorsView.tsx` → `IssuesView.tsx` — full replacement: grouped issue rows, toolbar, side panel with action buttons
+- `Sidebar.tsx` — add coverage indicator icon + hover tooltip per workflow; coverage data fetched alongside workflow list
+- `MetricsBar.tsx` — add freshness indicator (right-aligned) + delta row below each metric value
+- `App.tsx` — add 30s `setInterval` auto-refresh, error state banner, two-window metrics fetch for trends
 
-### Trend data
+### New Edge Function
 
-Computed client-side from two `fetchMetrics()` calls: one for current window, one for yesterday's window. No new DB functions needed — existing `fetchMetrics` accepts a time range parameter (to be added).
+`supaflow-issue-action` — accepts `{ id, status }`, validates status value, updates `supaflow_issues` using service role. Returns updated issue row.
 
 ---
 
