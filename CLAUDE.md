@@ -266,15 +266,15 @@ bash .claude/scripts/board-api.sh post tickets '{"title": "...", "body": "..."}'
 
 ```
 .claude-plugin/plugin.json         — Plugin manifest
+.claude-plugin/marketplace.json    — GitHub marketplace config
 skills/supaflow/SKILL.md           — Instrumentation skill (principles, API, decisions)
-commands/supaflow-init.md          — /supaflow:init command
-commands/supaflow-scan.md          — /supaflow:scan command
+commands/init.md                   — /supaflow:init command
+commands/scan.md                   — /supaflow:scan command
 hooks/hooks.json                   — Continuous PostToolUse hook
 assets/supaflow.ts                 — Runtime (copied to projects on init)
 assets/supaflow_schema.sql         — Schema (copied to projects on init)
 assets/dashboard/                  — Dashboard app (copied to projects on init)
 assets/tests/                      — Runtime tests
-marketplace.json                   — GitHub marketplace config
 ```
 
 **Commands:** `claude --plugin-dir .` (development), `/plugin validate` (check manifest)

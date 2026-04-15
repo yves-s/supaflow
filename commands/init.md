@@ -1,5 +1,5 @@
 ---
-name: supaflow-init
+name: init
 description: Initialize or update Supaflow in the current project. Fresh install copies everything and instruments functions. Re-run updates runtime and dashboard assets without touching schema, config, or instrumented code.
 ---
 

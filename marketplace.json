@@ -1,9 +1,0 @@
-{
-  "plugins": [
-    {
-      "name": "supaflow",
-      "description": "Automatic workflow instrumentation for Supabase Edge Functions",
-      "path": "."
-    }
-  ]
-}
