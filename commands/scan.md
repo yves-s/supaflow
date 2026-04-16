@@ -1,5 +1,5 @@
 ---
-name: scan
+name: supaflow:scan
 description: Scan all Edge Functions and instrument any uninstrumented code with Supaflow patterns. Run this to catch gaps or after adding new functions.
 ---
 
