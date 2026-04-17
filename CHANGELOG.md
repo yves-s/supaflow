@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ## [Unreleased]
 
+### Fixed
+- DLQ entries now visible in Issues tab — previously only the header count queried `dead_letter_queue`, while the Issues list only checked `workflow_runs`/`step_states` (7-day window), causing empty issue lists despite thousands of DLQ entries
+
 ### Added
 - Issues tab replacing Errors tab: groups failed runs by (workflow_name, step_name, error_pattern) into Sentry-style issue rows with count badge, 9-bucket 24h sparkline, first/last seen timestamps, trend arrow, and unresolved/resolved/ignored status
 - `supaflow_issues` table for storing issue status (unresolved/resolved/ignored) keyed by (workflow_name, step_name, error_pattern)

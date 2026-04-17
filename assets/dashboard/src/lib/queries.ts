@@ -324,6 +324,35 @@ export async function fetchFailedStepsForIssues(
 }
 
 /**
+ * Fetches unresolved DLQ entries mapped to FailedStepRaw format for issue grouping.
+ * No time window — DLQ entries persist until resolved, matching the header count.
+ */
+export async function fetchDlqForIssues(
+  workflowName?: string
+): Promise<FailedStepRaw[]> {
+  let query = supabase
+    .from("dead_letter_queue")
+    .select("run_id, workflow_name, step_name, error, created_at")
+    .is("resolved_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+  if (workflowName) query = query.eq("workflow_name", workflowName);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? [])
+    .filter(d => d.error)
+    .map(d => ({
+      runId: d.run_id,
+      workflowName: d.workflow_name,
+      stepName: d.step_name ?? "(unknown)",
+      error: d.error,
+      startedAt: new Date(d.created_at).getTime(),
+    }));
+}
+
+/**
  * For each workflow, returns the last step activity timestamp and known step count.
  */
 export async function fetchCoverage(

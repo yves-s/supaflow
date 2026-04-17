@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   fetchFailedStepsForIssues,
+  fetchDlqForIssues,
   fetchIssueStatuses,
   upsertIssueStatus,
 } from "../lib/queries";
@@ -65,11 +66,13 @@ export default function IssuesView({
   const loadIssues = useCallback(async () => {
     setLoading(true);
     try {
-      const [steps, storedStatuses] = await Promise.all([
+      const [steps, dlqSteps, storedStatuses] = await Promise.all([
         fetchFailedStepsForIssues(workflowName ?? undefined),
+        fetchDlqForIssues(workflowName ?? undefined),
         fetchIssueStatuses(workflowName ?? undefined),
       ]);
-      const grouped = groupIntoIssues(steps, storedStatuses, Date.now());
+      const allSteps = [...steps, ...dlqSteps];
+      const grouped = groupIntoIssues(allSteps, storedStatuses, Date.now());
       setIssues(grouped);
     } catch (err) {
       console.error("Failed to load issues:", err);
