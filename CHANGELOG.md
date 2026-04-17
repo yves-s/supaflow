@@ -9,6 +9,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 - DLQ entries now visible in Issues tab — previously only the header count queried `dead_letter_queue`, while the Issues list only checked `workflow_runs`/`step_states` (7-day window), causing empty issue lists despite thousands of DLQ entries
 
 ### Added
+- Dashboard test infrastructure: seed.sql with 60 realistic workflow runs, 180 steps, 25 DLQ entries, and 3 issues across 2 workflows
+- Integration tests for all dashboard queries (`npm run test:integration`) with invariant checks that catch DLQ count mismatches
+- Dev startup script (`npm run dev:seeded`) with env validation and connection info
+- `.env.example` template for Supabase dashboard credentials
+
+### Added
 - Issues tab replacing Errors tab: groups failed runs by (workflow_name, step_name, error_pattern) into Sentry-style issue rows with count badge, 9-bucket 24h sparkline, first/last seen timestamps, trend arrow, and unresolved/resolved/ignored status
 - `supaflow_issues` table for storing issue status (unresolved/resolved/ignored) keyed by (workflow_name, step_name, error_pattern)
 - `computeErrorPattern` — normalises error messages by stripping 4+ digit sequences → `<ID>` and UUID tokens → `<UUID>`
