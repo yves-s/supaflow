@@ -5,6 +5,7 @@ assets/dashboard/tsconfig.tsbuildinfo
 .claude/
 .pipeline/
 .env.local
+assets/dashboard/.env
 deno.lock
 project.json
 node_modules/
