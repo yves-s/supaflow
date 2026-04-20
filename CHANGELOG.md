@@ -28,6 +28,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 - `fetchMetrics` extended with optional `from`/`to` time window for trend delta comparison
 
 ### Added
+- `/supaflow:audit` command — analyzes unresolved DLQ entries, clusters by error pattern, reads relevant Edge Function code, and proposes targeted fixes with confirm-before-apply flow
 - Dashboard tab navigation (Flow / Errors / Logs) for switching between views
 - Errors view showing failed runs and Dead Letter Queue entries with detail panel integration
 - Logs view showing chronological step list across all runs with workflow filtering
