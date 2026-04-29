@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ## [Unreleased]
 
+### Changed
+- Dashboard shell rebuilt for the new design: paper-white surface with oklch token system (primitive → semantic → component layers), Inter + Geist Mono typography, 248px sidebar with brand mark / project picker / top-nav (Overview · Workflows · Issues · Logs) / workflow list / user foot, and a topbar with breadcrumbs that reflect the active view, search input (stub), live pulse status, range picker, refresh, and bell. View routing in App.tsx switches between `overview | workflows | workflow | run | issues | logs`; breadcrumbs are clickable. The previous dark-theme tokens have been replaced.
+
 ### Fixed
 - DLQ entries now visible in Issues tab — previously only the header count queried `dead_letter_queue`, while the Issues list only checked `workflow_runs`/`step_states` (7-day window), causing empty issue lists despite thousands of DLQ entries
 
