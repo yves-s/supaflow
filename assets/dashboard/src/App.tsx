@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Node, Edge, NodeMouseHandler } from "@xyflow/react";
-import Sidebar from "./components/Sidebar";
-import MetricsBar from "./components/MetricsBar";
-import TabBar, { type TabId } from "./components/TabBar";
+import AppSidebar from "./components/AppSidebar";
+import Topbar from "./components/Topbar";
 import FlowGraph from "./components/FlowGraph";
 import DetailPanel from "./components/DetailPanel";
 import IssuesView from "./components/IssuesView";
 import LogsView from "./components/LogsView";
+import type { ViewKind, ViewState } from "./lib/view";
+import { buildBreadcrumbs } from "./lib/view";
 import {
   fetchWorkflows,
   fetchRuns,
@@ -30,7 +31,7 @@ import { buildGraph } from "./lib/graph";
 import type { StepNodeData } from "./components/StepNode";
 
 function timeAgo(dateStr: string | null): string {
-  if (!dateStr) return "--";
+  if (!dateStr) return "—";
   const diff = Date.now() - new Date(dateStr).getTime();
   const s = Math.floor(diff / 1000);
   if (s < 60) return `${s}s ago`;
@@ -41,23 +42,16 @@ function timeAgo(dateStr: string | null): string {
   return `${Math.floor(h / 24)}d ago`;
 }
 
-function timeAgoMs(ms: number | null): string {
-  if (!ms) return "—";
-  const diff = Date.now() - ms;
-  const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  return `${m}m`;
-}
-
 export default function App() {
-  // Selection state
+  // ── View routing state ────────────────────────────────────────────────────
+  const [view, setView] = useState<ViewState>({ kind: "overview" });
+
+  // ── Selection state (workflow & run selection live alongside view) ────────
   const [selectedWorkflow, setSelectedWorkflow] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>("flow");
 
-  // Data state
+  // ── Data state ────────────────────────────────────────────────────────────
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [steps, setSteps] = useState<Step[]>([]);
@@ -68,58 +62,38 @@ export default function App() {
   const [allSteps, setAllSteps] = useState<StepWithWorkflow[]>([]);
   const [unresolvedCount, setUnresolvedCount] = useState(0);
 
-  // Freshness state
+  // ── Freshness state (drives live-pulse) ───────────────────────────────────
   const [lastFetchedAt, setLastFetchedAt] = useState<number | null>(null);
   const [fetchError, setFetchError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Delta (trend) state
-  const [deltas, setDeltas] = useState<{
-    successRate?: number;
-    totalRuns?: number;
-    avgDuration?: number;
-  }>({});
-
-  // Loading state
+  // ── Loading state ─────────────────────────────────────────────────────────
   const [loadingWorkflows, setLoadingWorkflows] = useState(true);
-  const [loadingRuns, setLoadingRuns] = useState(true);
+  const [loadingRuns, setLoadingRuns] = useState(false);
   const [loadingSteps, setLoadingSteps] = useState(false);
-  const [loadingMetrics, setLoadingMetrics] = useState(true);
+  const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [loadingErrors, setLoadingErrors] = useState(false);
   const [loadingLogs, setLoadingLogs] = useState(false);
 
-  // Graph state
+  // ── Graph state (run view) ────────────────────────────────────────────────
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
 
-  // Track selected workflow ref to avoid stale closures in refresh
   const selectedWorkflowRef = useRef(selectedWorkflow);
   selectedWorkflowRef.current = selectedWorkflow;
 
-  // ── Metrics fetch (with yesterday delta) ──────────────────────────────────
+  // ── Fetch helpers ─────────────────────────────────────────────────────────
 
-  const fetchMetricsWithDeltas = useCallback(async (workflowName: string | null) => {
+  const fetchMetricsForWorkflow = useCallback(async (workflowName: string | null) => {
     setLoadingMetrics(true);
     try {
-      const now = new Date();
-      const elapsedMin = now.getHours() * 60 + now.getMinutes();
-      const todayFrom = new Date(now.getTime() - elapsedMin * 60_000);
-      const yesterdayFrom = new Date(todayFrom.getTime() - 24 * 60 * 60_000);
-      const yesterdayTo = new Date(now.getTime() - 24 * 60 * 60_000);
-
       const wf = workflowName ?? undefined;
-      const [currentMetrics, yesterdayMetrics, count] = await Promise.all([
-        fetchMetrics(wf, todayFrom, now),
-        fetchMetrics(wf, yesterdayFrom, yesterdayTo),
+      const [currentMetrics, count] = await Promise.all([
+        fetchMetrics(wf),
         fetchFailedRunCount(wf),
       ]);
-
       setMetrics(currentMetrics);
       setFailedRunCount(count);
-      setDeltas({
-        successRate: currentMetrics.successRate - yesterdayMetrics.successRate,
-        totalRuns: currentMetrics.totalRuns - yesterdayMetrics.totalRuns,
-        avgDuration: currentMetrics.avgDurationMs - yesterdayMetrics.avgDurationMs,
-      });
       setLastFetchedAt(Date.now());
       setFetchError(false);
     } catch (err) {
@@ -129,8 +103,6 @@ export default function App() {
       setLoadingMetrics(false);
     }
   }, []);
-
-  // ── Unresolved issues count for tab badge ─────────────────────────────────
 
   const refreshUnresolvedCount = useCallback(async (workflowName: string | null) => {
     try {
@@ -145,19 +117,21 @@ export default function App() {
     }
   }, []);
 
-  // ── Full refresh ───────────────────────────────────────────────────────────
-
   const refresh = useCallback(async () => {
     const wf = selectedWorkflowRef.current;
-    await Promise.allSettled([
-      fetchMetricsWithDeltas(wf),
-      fetchRuns(wf ?? undefined).then(setRuns).catch(console.error),
-      refreshUnresolvedCount(wf),
-    ]);
-  }, [fetchMetricsWithDeltas, refreshUnresolvedCount]);
+    setRefreshing(true);
+    try {
+      await Promise.allSettled([
+        fetchMetricsForWorkflow(wf),
+        fetchRuns(wf ?? undefined).then(setRuns).catch(console.error),
+        refreshUnresolvedCount(wf),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [fetchMetricsForWorkflow, refreshUnresolvedCount]);
 
-  // ── Initial data fetch ─────────────────────────────────────────────────────
-
+  // ── Initial workflow fetch ────────────────────────────────────────────────
   useEffect(() => {
     setLoadingWorkflows(true);
     fetchWorkflows()
@@ -166,31 +140,36 @@ export default function App() {
       .finally(() => setLoadingWorkflows(false));
   }, []);
 
-  // Refetch runs + metrics when workflow filter changes
+  // ── Refetch runs/metrics when workflow filter changes ─────────────────────
   useEffect(() => {
+    if (selectedWorkflow === null) {
+      // overview / workflows / issues / logs scope — still want metrics + runs feed
+      fetchMetricsForWorkflow(null);
+      refreshUnresolvedCount(null);
+      setLoadingRuns(true);
+      fetchRuns(undefined)
+        .then(setRuns)
+        .catch(console.error)
+        .finally(() => setLoadingRuns(false));
+      return;
+    }
     setLoadingRuns(true);
-    setSelectedRunId(null);
-    setSelectedStepId(null);
-    setSteps([]);
-    setNodes([]);
-    setEdges([]);
-
-    fetchRuns(selectedWorkflow ?? undefined)
+    fetchRuns(selectedWorkflow)
       .then(setRuns)
       .catch(console.error)
       .finally(() => setLoadingRuns(false));
 
-    fetchMetricsWithDeltas(selectedWorkflow);
+    fetchMetricsForWorkflow(selectedWorkflow);
     refreshUnresolvedCount(selectedWorkflow);
-  }, [selectedWorkflow, fetchMetricsWithDeltas, refreshUnresolvedCount]);
+  }, [selectedWorkflow, fetchMetricsForWorkflow, refreshUnresolvedCount]);
 
-  // Auto-refresh every 30s
+  // ── Auto-refresh every 30s ────────────────────────────────────────────────
   useEffect(() => {
     const id = setInterval(refresh, 30_000);
     return () => clearInterval(id);
   }, [refresh]);
 
-  // Refetch steps when run changes
+  // ── Refetch steps when run changes ────────────────────────────────────────
   useEffect(() => {
     if (!selectedRunId) {
       setSteps([]);
@@ -220,9 +199,9 @@ export default function App() {
       .finally(() => setLoadingSteps(false));
   }, [selectedRunId]);
 
-  // Fetch data for Issues/Logs tabs on tab or workflow change
+  // ── Per-view side data (issues / logs) ────────────────────────────────────
   useEffect(() => {
-    if (activeTab === "issues") {
+    if (view.kind === "issues") {
       setLoadingErrors(true);
       Promise.allSettled([
         fetchFailedRuns(selectedWorkflow ?? undefined),
@@ -236,23 +215,62 @@ export default function App() {
           else console.error(dlqResult.reason);
         })
         .finally(() => setLoadingErrors(false));
-    } else if (activeTab === "logs") {
+    } else if (view.kind === "logs") {
       setLoadingLogs(true);
       fetchAllSteps(selectedWorkflow ?? undefined)
         .then(setAllSteps)
         .catch(console.error)
         .finally(() => setLoadingLogs(false));
     }
-  }, [activeTab, selectedWorkflow]);
+  }, [view.kind, selectedWorkflow]);
 
-  const handleSelectWorkflow = useCallback((name: string | null) => {
-    setSelectedWorkflow(name);
+  // ── Navigation handlers ───────────────────────────────────────────────────
+
+  const navigateTo = useCallback((target: ViewState) => {
+    setView(target);
+    if (target.workflow !== undefined) {
+      setSelectedWorkflow(target.workflow);
+    }
+    if (target.runId !== undefined) {
+      setSelectedRunId(target.runId);
+    } else if (target.kind !== "run") {
+      setSelectedRunId(null);
+    }
   }, []);
 
-  const handleSelectRun = useCallback((id: string) => {
-    setSelectedRunId(id);
-    setActiveTab("flow");
-  }, []);
+  const handleNavigate = useCallback(
+    (kind: ViewKind) => {
+      if (kind === "workflows") {
+        navigateTo({ kind: "workflows" });
+      } else if (kind === "overview" || kind === "issues" || kind === "logs") {
+        navigateTo({ kind });
+      }
+    },
+    [navigateTo],
+  );
+
+  const handleSelectWorkflow = useCallback(
+    (name: string | null) => {
+      if (name === null) {
+        navigateTo({ kind: "workflows", workflow: null });
+      } else {
+        navigateTo({ kind: "workflow", workflow: name });
+      }
+    },
+    [navigateTo],
+  );
+
+  const handleSelectRun = useCallback(
+    (id: string) => {
+      const run = runs.find((r) => r.id === id) ?? null;
+      navigateTo({
+        kind: "run",
+        workflow: run?.workflow_name ?? selectedWorkflow,
+        runId: id,
+      });
+    },
+    [navigateTo, runs, selectedWorkflow],
+  );
 
   const handleNodeClick: NodeMouseHandler = useCallback((_event, node) => {
     setSelectedStepId(node.id);
@@ -260,12 +278,6 @@ export default function App() {
 
   const handleCloseDetail = useCallback(() => {
     setSelectedStepId(null);
-  }, []);
-
-  // Error/Log click handlers -- build StepNodeData for DetailPanel
-  const handleErrorRunClick = useCallback((runId: string) => {
-    setSelectedRunId(runId);
-    setActiveTab("flow");
   }, []);
 
   const handleDlqClick = useCallback((entry: DlqEntry) => {
@@ -287,12 +299,7 @@ export default function App() {
       if (exists) return prev;
       return [
         ...prev,
-        {
-          id,
-          type: "step",
-          position: { x: 0, y: 0 },
-          data: syntheticData,
-        },
+        { id, type: "step", position: { x: 0, y: 0 }, data: syntheticData },
       ];
     });
   }, []);
@@ -324,7 +331,7 @@ export default function App() {
     });
   }, []);
 
-  // Derived values
+  // ── Derived ───────────────────────────────────────────────────────────────
   const selectedRun = runs.find((r) => r.id === selectedRunId) ?? null;
   const selectedStepData: StepNodeData | null = selectedStepId
     ? (nodes.find((n) => n.id === selectedStepId)?.data as StepNodeData) ?? null
@@ -333,111 +340,77 @@ export default function App() {
     ? dlqEntries.find((d) => (d.step_name ?? d.id) === selectedStepId) ?? null
     : null;
 
-  // Error count for tab badge (legacy fallback)
-  const errorCount = (metrics?.dlqCount ?? 0) + failedRunCount;
+  const breadcrumbs = buildBreadcrumbs(view);
+  const liveStatus: "live" | "stale" | "error" = fetchError
+    ? "error"
+    : lastFetchedAt && Date.now() - lastFetchedAt > 90_000
+    ? "stale"
+    : "live";
 
-  // steps is used in effects above; suppress unused var
+  // Suppressing unused vars used by deps (steps + loadingMetrics gate child-views later)
   void steps;
+  void loadingMetrics;
+  void metrics;
+  void failedRunCount;
 
   return (
-    <div style={{ display: "flex", height: "100vh", width: "100%", overflow: "hidden" }}>
-      <Sidebar
-        workflows={workflows}
-        runs={runs}
-        selectedRunId={selectedRunId}
+    <div className="app-shell">
+      <AppSidebar
+        view={view.kind}
         selectedWorkflow={selectedWorkflow}
-        onSelectRun={handleSelectRun}
-        onSelectWorkflow={handleSelectWorkflow}
+        workflows={workflows}
         loadingWorkflows={loadingWorkflows}
-        loadingRuns={loadingRuns}
+        unresolvedCount={unresolvedCount}
+        onNavigate={handleNavigate}
+        onSelectWorkflow={handleSelectWorkflow}
       />
 
-      <div className="main-area">
-        <MetricsBar
-          metrics={metrics}
-          loading={loadingMetrics}
-          lastFetchedAt={lastFetchedAt}
+      <main className="app-main">
+        <Topbar
+          breadcrumbs={breadcrumbs}
+          liveStatus={liveStatus}
+          range="Last 24h"
+          refreshing={refreshing}
+          notifications={unresolvedCount}
+          onCrumbClick={navigateTo}
           onRefresh={refresh}
-          deltas={deltas}
         />
 
-        {/* Stale banner */}
-        {fetchError && lastFetchedAt && (
-          <div className="stale-banner">
-            ⚠ Daten konnten nicht aktualisiert werden — zuletzt vor{" "}
-            {timeAgoMs(lastFetchedAt)}
-          </div>
-        )}
+        <section className="app-view">
+          {view.kind === "overview" && (
+            <OverviewSlot />
+          )}
 
-        <TabBar
-          activeTab={activeTab}
-          onTabChange={setActiveTab}
-          errorCount={errorCount}
-          unresolvedCount={unresolvedCount}
-        />
+          {view.kind === "workflows" && (
+            <WorkflowsSlot
+              workflows={workflows}
+              loading={loadingWorkflows}
+              onSelect={(name) => navigateTo({ kind: "workflow", workflow: name })}
+            />
+          )}
 
-        {activeTab === "flow" && (
-          <>
-            {/* Run header */}
-            <div className="run-header">
-              {selectedRun ? (
-                <>
-                  <span className="run-header-name">
-                    {selectedRun.workflow_name}
-                  </span>
-                  <span className="run-header-id">
-                    {selectedRun.id.slice(0, 8)}
-                  </span>
-                  <span className={`status-badge ${selectedRun.status}`}>
-                    {selectedRun.status}
-                  </span>
-                  <span className="run-header-time">
-                    {timeAgo(selectedRun.started_at)}
-                  </span>
-                </>
-              ) : (
-                <span style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                  Select a run to inspect its steps
-                </span>
-              )}
-            </div>
+          {view.kind === "workflow" && (
+            <WorkflowSlot
+              workflowName={view.workflow ?? selectedWorkflow}
+              runs={runs}
+              loadingRuns={loadingRuns}
+              onSelectRun={handleSelectRun}
+            />
+          )}
 
-            {/* Flow canvas */}
-            <div className="flow-area">
-              {loadingSteps ? (
-                <div className="empty-state">
-                  <div className="empty-state-title">Loading steps...</div>
-                </div>
-              ) : selectedRunId && nodes.length > 0 ? (
-                <FlowGraph
-                  nodes={nodes}
-                  edges={edges}
-                  onNodeClick={handleNodeClick}
-                />
-              ) : selectedRunId && !loadingSteps && nodes.length === 0 ? (
-                <div className="empty-state">
-                  <div className="empty-state-icon">&#9675;</div>
-                  <div className="empty-state-title">No steps recorded</div>
-                  <div className="empty-state-sub">
-                    This run has no step data yet
-                  </div>
-                </div>
-              ) : (
-                <div className="empty-state">
-                  <div className="empty-state-icon">&#11041;</div>
-                  <div className="empty-state-title">No run selected</div>
-                  <div className="empty-state-sub">
-                    Pick a run from the sidebar to visualize its steps
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
+          {view.kind === "run" && (
+            <RunSlot
+              run={selectedRun}
+              loadingSteps={loadingSteps}
+              nodes={nodes}
+              edges={edges}
+              onNodeClick={handleNodeClick}
+              workflowName={view.workflow ?? selectedRun?.workflow_name ?? null}
+            />
+          )}
 
-        {activeTab === "issues" && (
-          <div className="tab-content">
-            <IssuesView
+          {view.kind === "issues" && (
+            <IssuesSlot
               workflowName={selectedWorkflow}
               onRunSelect={handleSelectRun}
               failedRuns={failedRuns}
@@ -445,19 +418,17 @@ export default function App() {
               loadingErrors={loadingErrors}
               onSelectDlq={handleDlqClick}
             />
-          </div>
-        )}
+          )}
 
-        {activeTab === "logs" && (
-          <div className="tab-content">
-            <LogsView
+          {view.kind === "logs" && (
+            <LogsSlot
               steps={allSteps}
               loading={loadingLogs}
               onSelectStep={handleLogStepClick}
             />
-          </div>
-        )}
-      </div>
+          )}
+        </section>
+      </main>
 
       {selectedStepData && (
         <DetailPanel
@@ -468,4 +439,267 @@ export default function App() {
       )}
     </div>
   );
+
+  // ── View slot components — minimal headers, empty bodies acceptable ───────
+
+  function OverviewSlot() {
+    return (
+      <>
+        <header className="view-header">
+          <div className="view-header-title-group">
+            <span className="view-eyebrow">Dashboard</span>
+            <h1 className="view-title">Overview</h1>
+            <p className="view-subtitle">
+              Health, throughput, and recent activity across all workflows.
+            </p>
+          </div>
+        </header>
+        <div className="view-stub">
+          <div className="view-stub-title">Overview content lands in a sibling ticket</div>
+          <div className="view-stub-sub">KPIs, charts, and recent activity will fill this space.</div>
+        </div>
+      </>
+    );
+  }
+
+  function WorkflowsSlot({
+    workflows,
+    loading,
+    onSelect,
+  }: {
+    workflows: WorkflowSummary[];
+    loading: boolean;
+    onSelect: (name: string) => void;
+  }) {
+    return (
+      <>
+        <header className="view-header">
+          <div className="view-header-title-group">
+            <span className="view-eyebrow">Catalog</span>
+            <h1 className="view-title">Workflows</h1>
+            <p className="view-subtitle">
+              {workflows.length} workflow{workflows.length === 1 ? "" : "s"} instrumented.
+            </p>
+          </div>
+        </header>
+        {loading ? (
+          <div className="view-stub">
+            <div className="view-stub-title">Loading workflows…</div>
+          </div>
+        ) : workflows.length === 0 ? (
+          <div className="view-stub">
+            <div className="view-stub-title">No workflows yet</div>
+            <div className="view-stub-sub">Run /supaflow:scan to instrument your Edge Functions.</div>
+          </div>
+        ) : (
+          <ul style={{ listStyle: "none", display: "grid", gap: 8 }}>
+            {workflows.map((wf) => (
+              <li key={wf.workflow_name}>
+                <button
+                  type="button"
+                  className="card"
+                  onClick={() => onSelect(wf.workflow_name)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "12px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 12,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span className="status-dot completed" aria-hidden />
+                  <span style={{ fontWeight: 500, flex: 1 }}>{wf.workflow_name}</span>
+                  <span className="tnum" style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                    {wf.total_runs} runs · {wf.success_rate}% success
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  }
+
+  function WorkflowSlot({
+    workflowName,
+    runs,
+    loadingRuns,
+    onSelectRun,
+  }: {
+    workflowName: string | null;
+    runs: Run[];
+    loadingRuns: boolean;
+    onSelectRun: (id: string) => void;
+  }) {
+    return (
+      <>
+        <header className="view-header">
+          <div className="view-header-title-group">
+            <span className="view-eyebrow">Workflow</span>
+            <h1 className="view-title">{workflowName ?? "Untitled workflow"}</h1>
+            <p className="view-subtitle">
+              Runs, structure and reliability for this workflow.
+            </p>
+          </div>
+        </header>
+        {loadingRuns ? (
+          <div className="view-stub">
+            <div className="view-stub-title">Loading runs…</div>
+          </div>
+        ) : runs.length === 0 ? (
+          <div className="view-stub">
+            <div className="view-stub-title">No runs recorded</div>
+            <div className="view-stub-sub">This workflow has not executed yet.</div>
+          </div>
+        ) : (
+          <ul style={{ listStyle: "none", display: "grid", gap: 6 }}>
+            {runs.slice(0, 25).map((r) => (
+              <li key={r.id}>
+                <button
+                  type="button"
+                  className="card"
+                  onClick={() => onSelectRun(r.id)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "10px 14px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    cursor: "pointer",
+                  }}
+                >
+                  <span className={`status-dot ${r.status}`} aria-hidden />
+                  <span className="mono" style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                    {r.id.slice(0, 8)}
+                  </span>
+                  <span className={`status-badge ${r.status}`}>{r.status}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 12, color: "var(--text-muted)" }}>
+                    {timeAgo(r.started_at)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </>
+    );
+  }
+
+  function RunSlot({
+    run,
+    loadingSteps,
+    nodes,
+    edges,
+    onNodeClick,
+    workflowName,
+  }: {
+    run: Run | null;
+    loadingSteps: boolean;
+    nodes: Node[];
+    edges: Edge[];
+    onNodeClick: NodeMouseHandler;
+    workflowName: string | null;
+  }) {
+    return (
+      <>
+        <header className="view-header">
+          <div className="view-header-title-group">
+            <span className="view-eyebrow">{workflowName ?? "Workflow"}</span>
+            <h1 className="view-title">
+              {run ? `Run ${run.id.slice(0, 8)}` : "Run"}
+            </h1>
+            {run && (
+              <p className="view-subtitle">
+                <span className={`status-badge ${run.status}`} style={{ marginRight: 8 }}>
+                  {run.status}
+                </span>
+                Started {timeAgo(run.started_at)}
+              </p>
+            )}
+          </div>
+        </header>
+
+        <div
+          style={{
+            border: "1px solid var(--border-subtle)",
+            borderRadius: "var(--radius-lg)",
+            background: "var(--surface-panel)",
+            height: "calc(100vh - var(--topbar-height) - 200px)",
+            minHeight: 320,
+            position: "relative",
+            overflow: "hidden",
+          }}
+        >
+          {loadingSteps ? (
+            <div className="empty-state">
+              <div className="empty-state-title">Loading steps…</div>
+            </div>
+          ) : nodes.length > 0 ? (
+            <FlowGraph nodes={nodes} edges={edges} onNodeClick={onNodeClick} />
+          ) : run ? (
+            <div className="empty-state">
+              <div className="empty-state-icon">○</div>
+              <div className="empty-state-title">No steps recorded</div>
+              <div className="empty-state-sub">This run has no step data yet.</div>
+            </div>
+          ) : (
+            <div className="empty-state">
+              <div className="empty-state-icon">⬢</div>
+              <div className="empty-state-title">No run selected</div>
+              <div className="empty-state-sub">Pick a run to inspect its steps.</div>
+            </div>
+          )}
+        </div>
+      </>
+    );
+  }
+
+  function IssuesSlot(props: {
+    workflowName: string | null;
+    onRunSelect: (runId: string) => void;
+    failedRuns: Run[];
+    dlqEntries: DlqEntry[];
+    loadingErrors: boolean;
+    onSelectDlq: (entry: DlqEntry) => void;
+  }) {
+    return (
+      <>
+        <header className="view-header">
+          <div className="view-header-title-group">
+            <span className="view-eyebrow">Reliability</span>
+            <h1 className="view-title">Issues</h1>
+            <p className="view-subtitle">
+              Failures grouped by signature. Resolve, snooze, or jump to the run.
+            </p>
+          </div>
+        </header>
+        <IssuesView {...props} />
+      </>
+    );
+  }
+
+  function LogsSlot(props: {
+    steps: StepWithWorkflow[];
+    loading: boolean;
+    onSelectStep: (step: StepWithWorkflow) => void;
+  }) {
+    return (
+      <>
+        <header className="view-header">
+          <div className="view-header-title-group">
+            <span className="view-eyebrow">Activity</span>
+            <h1 className="view-title">Logs</h1>
+            <p className="view-subtitle">
+              Step-level activity stream across all instrumented workflows.
+            </p>
+          </div>
+        </header>
+        <LogsView {...props} />
+      </>
+    );
+  }
 }
