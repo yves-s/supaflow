@@ -5,6 +5,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/)
 
 ## [Unreleased]
 
+### Added
+- Shared dashboard primitives: `<Sparkline>` (smooth-path SVG with gradient area, configurable color/height/width/fill), `<Icon>` (23-name set covering nav, status, actions, and metric glyphs from the design source), and `lib/format.ts` (`fmt`, `fmtPct`, `fmtMs`, `timeAgo`). All four downstream views — Overview, Workflows, Run detail, Issues — now have a single source of truth instead of duplicating helpers per file. Format helpers are unit-tested for thresholds (1.5k / 1.50 s / 950 ms / s·m·h·d), and Sparkline + Icon render with zero React warnings (asserted via spy).
+
 ### Changed
 - Dashboard shell rebuilt for the new design: paper-white surface with oklch token system (primitive → semantic → component layers), Inter + Geist Mono typography, 248px sidebar with brand mark / project picker / top-nav (Overview · Workflows · Issues · Logs) / workflow list / user foot, and a topbar with breadcrumbs that reflect the active view, search input (stub), live pulse status, range picker, refresh, and bell. View routing in App.tsx switches between `overview | workflows | workflow | run | issues | logs`; breadcrumbs are clickable. The previous dark-theme tokens have been replaced.
 
